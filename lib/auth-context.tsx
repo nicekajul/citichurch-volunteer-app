@@ -40,19 +40,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const supabase = createClient()
 
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single()
+  const fetchProfile = async (userId: string, retries = 3): Promise<Profile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single()
 
-    if (error) {
-      console.error("[v0] Error fetching profile:", error)
+      if (error) {
+        console.error("[v0] Error fetching profile:", error)
+        
+        // Retry on network errors
+        if (retries > 0 && (error.message.includes("fetch") || error.message.includes("network"))) {
+          console.log("[v0] Retrying profile fetch, attempts remaining:", retries)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          return fetchProfile(userId, retries - 1)
+        }
+        
+        return null
+      }
+
+      return data as Profile
+    } catch (error) {
+      console.error("[v0] Exception fetching profile:", error)
+      
+      // Retry on exceptions
+      if (retries > 0) {
+        console.log("[v0] Retrying after exception, attempts remaining:", retries)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        return fetchProfile(userId, retries - 1)
+      }
+      
       return null
     }
-
-    return data as Profile
   }
 
   const refreshProfile = async () => {
@@ -69,16 +90,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Check for existing session
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session?.user) {
-        const profileData = await fetchProfile(session.user.id)
-        if (profileData) {
-          setProfile(profileData)
-          setUser({ ...profileData, supabase_user: session.user })
+      try {
+        console.log("[v0] Checking for existing session")
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error("[v0] Error getting session:", error)
+          setIsLoading(false)
+          return
         }
+        
+        if (session?.user) {
+          console.log("[v0] Found session for user:", session.user.email)
+          const profileData = await fetchProfile(session.user.id)
+          if (profileData) {
+            setProfile(profileData)
+            setUser({ ...profileData, supabase_user: session.user })
+            console.log("[v0] Profile loaded:", profileData.role)
+          } else {
+            console.log("[v0] Profile not found for user")
+          }
+        } else {
+          console.log("[v0] No session found")
+        }
+      } catch (error) {
+        console.error("[v0] Exception in checkSession:", error)
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
 
     checkSession()
@@ -87,15 +126,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("[v0] Auth state changed:", event)
       
-      if (session?.user) {
-        const profileData = await fetchProfile(session.user.id)
-        if (profileData) {
-          setProfile(profileData)
-          setUser({ ...profileData, supabase_user: session.user })
+      try {
+        if (session?.user && event === 'SIGNED_IN') {
+          console.log("[v0] User signed in:", session.user.email)
+          const profileData = await fetchProfile(session.user.id)
+          if (profileData) {
+            setProfile(profileData)
+            setUser({ ...profileData, supabase_user: session.user })
+            console.log("[v0] Profile set after sign in:", profileData.role)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          console.log("[v0] User signed out")
+          setUser(null)
+          setProfile(null)
         }
-      } else {
-        setUser(null)
-        setProfile(null)
+      } catch (error) {
+        console.error("[v0] Error in auth state change handler:", error)
       }
     })
 
