@@ -91,27 +91,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for existing session
     const checkSession = async () => {
       try {
-        console.log("[v0] Checking for existing session")
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
-          console.error("[v0] Error getting session:", error)
           setIsLoading(false)
           return
         }
         
         if (session?.user) {
-          console.log("[v0] Found session for user:", session.user.email)
           const profileData = await fetchProfile(session.user.id)
           if (profileData) {
             setProfile(profileData)
             setUser({ ...profileData, supabase_user: session.user })
-            console.log("[v0] Profile loaded:", profileData.role)
-          } else {
-            console.log("[v0] Profile not found for user")
           }
-        } else {
-          console.log("[v0] No session found")
         }
       } catch (error) {
         console.error("[v0] Exception in checkSession:", error)
@@ -122,21 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     checkSession()
 
-    // Listen for auth changes
+    // Listen for auth changes - only respond to actual sign in/out events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[v0] Auth state changed:", event)
-      
       try {
         if (session?.user && event === 'SIGNED_IN') {
-          console.log("[v0] User signed in:", session.user.email)
           const profileData = await fetchProfile(session.user.id)
           if (profileData) {
             setProfile(profileData)
             setUser({ ...profileData, supabase_user: session.user })
-            console.log("[v0] Profile set after sign in:", profileData.role)
           }
         } else if (event === 'SIGNED_OUT') {
-          console.log("[v0] User signed out")
           setUser(null)
           setProfile(null)
         }

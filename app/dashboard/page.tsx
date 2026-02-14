@@ -9,17 +9,11 @@ export default function DashboardPage() {
   const { user, isLoading } = useAuth()
 
   useEffect(() => {
-    console.log("[v0] Dashboard page - user:", user, "isLoading:", isLoading)
-    
-    if (!isLoading) {
-      if (user?.role) {
-        const redirect = getRoleRedirect(user.role)
-        console.log("[v0] Redirecting to:", redirect)
-        router.replace(redirect)
-      } else {
-        console.log("[v0] No user found, redirecting to login")
-        router.replace("/login")
-      }
+    if (!isLoading && user?.role) {
+      const redirect = getRoleRedirect(user.role)
+      router.replace(redirect)
+    } else if (!isLoading && !user) {
+      router.replace("/login")
     }
   }, [user, isLoading, router])
 
