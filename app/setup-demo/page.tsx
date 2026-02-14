@@ -48,53 +48,37 @@ export default function SetupDemoPage() {
 
   const createDemoUsers = async () => {
     setIsCreating(true)
-    const newResults: { email: string; success: boolean; error?: string }[] = []
 
-    for (const user of demoUsers) {
-      try {
-        // Try to sign up the user
-        const { data, error } = await supabase.auth.signUp({
-          email: user.email,
-          password: user.password,
-          options: {
-            data: {
-              name: user.name,
-              role: user.role,
-              team_id: user.team_id || null,
-            },
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+    try {
+      const response = await fetch("/api/setup-demo", {
+        method: "POST",
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.results) {
+        setResults(data.results)
+        setIsComplete(true)
+      } else {
+        setResults([
+          {
+            email: "Setup Failed",
+            success: false,
+            error: data.error || "Failed to create demo users",
           },
-        })
-
-        if (error) {
-          // Check if user already exists
-          if (error.message.includes("already registered")) {
-            newResults.push({ email: user.email, success: true, error: "Already exists" })
-          } else {
-            newResults.push({ email: user.email, success: false, error: error.message })
-          }
-        } else if (data.user) {
-          // Update the profile with team_id if provided
-          if (user.team_id) {
-            await supabase.from("profiles").update({ team_id: user.team_id }).eq("id", data.user.id)
-          }
-          newResults.push({ email: user.email, success: true })
-        }
-      } catch (error) {
-        newResults.push({
-          email: user.email,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        })
+        ])
       }
-
-      setResults([...newResults])
-      // Small delay between requests
-      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error) {
+      setResults([
+        {
+          email: "Setup Failed",
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error occurred",
+        },
+      ])
     }
 
     setIsCreating(false)
-    setIsComplete(true)
   }
 
   return (
