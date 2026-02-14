@@ -124,8 +124,16 @@ export default function LoginPage() {
 
         {/* Demo Credentials */}
         <Card className="border-border/50 bg-card/50">
-          <CardHeader className="py-3">
+          <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium text-muted-foreground">Demo Credentials</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/setup-demo")}
+              className="text-xs h-7 px-2"
+            >
+              Setup Demo Users
+            </Button>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="space-y-2">
