@@ -43,11 +43,18 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect to appropriate dashboard if accessing login while authenticated
+  // Redirect to dashboard if accessing login while authenticated
   if (
     (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/') &&
     user
   ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
+
+  // Handle /dashboard redirect to role-specific dashboard
+  if (request.nextUrl.pathname === '/dashboard' && user) {
     // Get user role from profile
     const { data: profile } = await supabase
       .from('profiles')
