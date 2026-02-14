@@ -28,18 +28,25 @@ export default function TeamLeaderDashboard() {
   const { users, teams, trainingVideos, trainingProgress, announcements, approveProgress } = useData()
   const router = useRouter()
 
-  if (user?.role !== "team_leader") {
-    router.push("/dashboard")
-    return null
+  // Don't redirect if still loading or if user is a leader
+  if (!user || (user.role !== "leader" && user.role !== "team_leader")) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    )
   }
 
-  const myTeam = teams.find((t) => t.id === user.teamId)
-  const teamMembers = users.filter((u) => u.teamId === user.teamId && u.role === "volunteer")
+  const myTeam = teams.find((t) => t.id === user.team_id)
+  const teamMembers = users.filter((u) => u.team_id === user.team_id && u.role === "volunteer")
   const activeMembers = teamMembers.filter((m) => m.status === "active")
   const pendingMembers = teamMembers.filter((m) => m.status === "pending")
 
   // Get team-specific and general training videos
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.teamId)
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
 
   // Calculate team progress
   const teamProgressData = teamMembers.map((member) => {
@@ -61,7 +68,7 @@ export default function TeamLeaderDashboard() {
 
   const totalPendingApprovals = teamProgressData.reduce((acc, m) => acc + m.pendingApprovals.length, 0)
 
-  const teamAnnouncements = announcements.filter((a) => !a.teamId || a.teamId === user.teamId)
+  const teamAnnouncements = announcements.filter((a) => !a.teamId || a.teamId === user.team_id)
 
   const handleApprove = (progressId: string) => {
     approveProgress(progressId, user.id)

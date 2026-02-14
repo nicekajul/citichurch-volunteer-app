@@ -1,25 +1,27 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth, getRoleRedirect } from "@/lib/auth-context"
+import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Church, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, Church, AlertCircle, CheckCircle2 } from "lucide-react"
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [name, setName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const { login } = useAuth()
+  const { signup } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,23 +29,42 @@ export default function LoginPage() {
     setError("")
     setIsLoading(true)
 
-    const result = await login(email, password)
+    const result = await signup(email, password, name)
 
     if (result.success) {
-      // Middleware will handle redirect based on role
-      router.push("/dashboard")
+      setSuccess(true)
+      setTimeout(() => {
+        router.push("/login")
+      }, 3000)
     } else {
-      setError(result.error || "Invalid email or password")
+      setError(result.error || "Failed to create account")
     }
 
     setIsLoading(false)
   }
 
-  const demoCredentials = [
-    { role: "Admin", email: "admin@citichurch.com", password: "admin123" },
-    { role: "Team Leader", email: "leader@citichurch.com", password: "leader123" },
-    { role: "Volunteer", email: "volunteer@citichurch.com", password: "volunteer123" },
-  ]
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+        <Card className="w-full max-w-md border-border/50 shadow-lg">
+          <CardHeader className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-500/10 mb-4 mx-auto">
+              <CheckCircle2 className="w-8 h-8 text-green-500" />
+            </div>
+            <CardTitle>Check Your Email</CardTitle>
+            <CardDescription>
+              We sent a confirmation link to <strong>{email}</strong>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground text-center">
+              Click the link in the email to verify your account. Redirecting to login page...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
@@ -54,14 +75,14 @@ export default function LoginPage() {
             <Church className="w-8 h-8 text-primary" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Citichurch</h1>
-          <p className="text-muted-foreground">Production Ministry Portal</p>
+          <p className="text-muted-foreground">Create Your Account</p>
         </div>
 
-        {/* Login Card */}
+        {/* Signup Card */}
         <Card className="border-border/50 shadow-lg">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Welcome back</CardTitle>
-            <CardDescription>Sign in to access your dashboard</CardDescription>
+            <CardTitle className="text-xl">Sign up</CardTitle>
+            <CardDescription>Enter your details to create an account</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -71,6 +92,19 @@ export default function LoginPage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  className="h-11"
+                />
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -91,10 +125,11 @@ export default function LoginPage() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    placeholder="Create a password (min. 6 characters)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    minLength={6}
                     className="h-11 pr-10"
                   />
                   <button
@@ -115,43 +150,16 @@ export default function LoginPage() {
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  "Sign In"
+                  "Create Account"
                 )}
               </Button>
             </form>
-          </CardContent>
-        </Card>
 
-        {/* Demo Credentials */}
-        <Card className="border-border/50 bg-card/50">
-          <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Demo Credentials</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/setup-demo")}
-              className="text-xs h-7 px-2"
-            >
-              Setup Demo Users
-            </Button>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2">
-              {demoCredentials.map((cred) => (
-                <button
-                  key={cred.role}
-                  onClick={() => {
-                    setEmail(cred.email)
-                    setPassword(cred.password)
-                  }}
-                  className="w-full flex flex-col items-start p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm gap-1"
-                >
-                  <span className="font-medium">{cred.role}</span>
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {cred.email}
-                  </span>
-                </button>
-              ))}
+            <div className="mt-4 text-center text-sm">
+              <span className="text-muted-foreground">Already have an account? </span>
+              <Link href="/login" className="text-primary hover:underline font-medium">
+                Sign in
+              </Link>
             </div>
           </CardContent>
         </Card>
