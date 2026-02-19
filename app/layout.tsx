@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
-import { SupabaseDataProvider } from "@/lib/supabase-data-context"
+import { DataProvider } from "@/lib/data-context"
 import { ThemeProvider } from "@/lib/theme-context"
 import "./globals.css"
 
@@ -43,7 +43,7 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         <ThemeProvider>
           <AuthProvider>
-            <SupabaseDataProvider>{children}</SupabaseDataProvider>
+            <DataProvider>{children}</DataProvider>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />
