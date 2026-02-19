@@ -32,7 +32,7 @@ export default function MyTeamPage() {
   const [isMessageOpen, setIsMessageOpen] = useState(false)
   const [message, setMessage] = useState({ title: "", content: "" })
 
-  if (user?.role !== "team_leader") {
+  if (user?.role !== "leader") {
     router.push("/dashboard")
     return null
   }

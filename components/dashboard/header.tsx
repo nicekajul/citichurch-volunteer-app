@@ -18,7 +18,7 @@ export function Header({ title, subtitle }: HeaderProps) {
     if (!user) return null
     const roleLabels = {
       admin: "Administrator",
-      team_leader: "Team Leader",
+      leader: "Team Leader",
       volunteer: "Volunteer",
     }
     return roleLabels[user.role]

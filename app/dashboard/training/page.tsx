@@ -102,7 +102,7 @@ export default function TrainingPage() {
     }[]
   >([{ question: "", options: ["", "", "", ""], correctAnswer: 0 }])
 
-  if (user?.role !== "admin" && user?.role !== "team_leader") {
+  if (user?.role !== "admin" && user?.role !== "leader") {
     return null
   }
 
@@ -110,7 +110,7 @@ export default function TrainingPage() {
     const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesTeam = filterTeam === "all" || (filterTeam === "general" && !v.teamId) || v.teamId === filterTeam
 
-    if (user?.role === "team_leader") {
+    if (user?.role === "leader") {
       const isRelevant = !v.teamId || v.teamId === user.teamId
       return matchesSearch && isRelevant && (filterTeam === "all" || matchesTeam)
     }
@@ -150,7 +150,7 @@ export default function TrainingPage() {
 
   const handleAddVideo = () => {
     const teamId =
-      user?.role === "team_leader" ? user.teamId : newVideo.teamId === "general" ? undefined : newVideo.teamId
+      user?.role === "leader" ? user.teamId : newVideo.teamId === "general" ? undefined : newVideo.teamId
 
     addTrainingVideo({
       title: newVideo.title,
@@ -353,7 +353,7 @@ export default function TrainingPage() {
               <DialogHeader>
                 <DialogTitle>Add Training Module</DialogTitle>
                 <DialogDescription>
-                  {user?.role === "team_leader"
+                  {user?.role === "leader"
                     ? `Create a new training module for your ${teams.find((t) => t.id === user.teamId)?.name} team`
                     : "Create a new training module with video and/or documents"}
                 </DialogDescription>

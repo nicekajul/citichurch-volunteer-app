@@ -33,13 +33,13 @@ export default function AnnouncementsPage() {
     teamId: "",
   })
 
-  const canCreate = user?.role === "admin" || user?.role === "team_leader"
+  const canCreate = user?.role === "admin" || user?.role === "leader"
 
   const filteredAnnouncements = announcements
     .filter((a) => {
       if (user?.role === "admin") return true
       if (!a.teamId) return true // General announcements visible to all
-      if (user?.role === "team_leader" && a.teamId === user.teamId) return true
+      if (user?.role === "leader" && a.teamId === user.teamId) return true
       if (user?.role === "volunteer" && a.teamId === user.teamId) return true
       return false
     })
@@ -53,7 +53,7 @@ export default function AnnouncementsPage() {
       content: newAnnouncement.content,
       priority: newAnnouncement.priority,
       authorId: user.id,
-      teamId: user.role === "team_leader" ? user.teamId : newAnnouncement.teamId || undefined,
+      teamId: user.role === "leader" ? user.teamId : newAnnouncement.teamId || undefined,
     })
     setNewAnnouncement({ title: "", content: "", priority: "low", teamId: "" })
     setIsOpen(false)

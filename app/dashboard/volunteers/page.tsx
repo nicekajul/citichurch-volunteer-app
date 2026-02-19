@@ -48,7 +48,7 @@ export default function VolunteersPage() {
   // Filter volunteers based on role
   let volunteers = users.filter((u) => u.role === "volunteer")
 
-  if (user?.role === "team_leader") {
+  if (user?.role === "leader") {
     volunteers = volunteers.filter((v) => v.teamId === user.teamId)
   }
 

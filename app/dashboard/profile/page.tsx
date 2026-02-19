@@ -40,7 +40,7 @@ export default function ProfilePage() {
     switch (role) {
       case "admin":
         return "bg-primary text-primary-foreground"
-      case "team_leader":
+      case "leader":
         return "bg-blue-500 text-white"
       default:
         return "bg-muted text-muted-foreground"
@@ -94,7 +94,7 @@ export default function ProfilePage() {
                 <p className="text-muted-foreground">{user.email}</p>
                 <div className="flex items-center gap-2 mt-3">
                   <Badge className={getRoleBadgeColor(user.role)}>
-                    {user.role === "team_leader"
+                    {user.role === "leader"
                       ? "Team Leader"
                       : user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                   </Badge>

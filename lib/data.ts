@@ -1,5 +1,5 @@
 // Types
-export type UserRole = "admin" | "team_leader" | "volunteer"
+export type UserRole = "admin" | "leader" | "volunteer"
 
 export interface User {
   id: string
@@ -110,7 +110,7 @@ export const initialUsers: User[] = [
     password: "leader123",
     name: "John Leader",
     email: "john@citichurch.com",
-    role: "team_leader",
+    role: "leader",
     teamId: "sounds",
     avatar: "/team-leader-male.jpg",
     phone: "+1 234 567 8901",
@@ -149,7 +149,7 @@ export const initialUsers: User[] = [
     password: "emma123",
     name: "Emma Wilson",
     email: "emma@citichurch.com",
-    role: "team_leader",
+    role: "leader",
     teamId: "media",
     avatar: "/female-team-leader.jpg",
     phone: "+1 234 567 8904",
@@ -188,7 +188,7 @@ export const initialUsers: User[] = [
     password: "james123",
     name: "James Taylor",
     email: "james@citichurch.com",
-    role: "team_leader",
+    role: "leader",
     teamId: "broadcast",
     avatar: "/male-broadcaster.jpg",
     phone: "+1 234 567 8907",
