@@ -141,33 +141,36 @@ export default function TeamsPage() {
                 Add Team
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Create New Team</DialogTitle>
                 <DialogDescription>Add a new team to the Production Ministry</DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-5 py-4">
                 <div className="space-y-2">
-                  <Label>Team Name</Label>
+                  <Label htmlFor="team-name">Team Name</Label>
                   <Input
+                    id="team-name"
                     value={newTeam.name}
                     onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })}
                     placeholder="e.g., Graphics"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label htmlFor="team-description">Description</Label>
                   <Textarea
+                    id="team-description"
                     value={newTeam.description}
                     onChange={(e) => setNewTeam({ ...newTeam, description: e.target.value })}
                     placeholder="Brief description of the team's role"
+                    rows={3}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Icon</Label>
+                    <Label htmlFor="team-icon">Icon</Label>
                     <Select value={newTeam.icon} onValueChange={(v) => setNewTeam({ ...newTeam, icon: v })}>
-                      <SelectTrigger>
+                      <SelectTrigger id="team-icon">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -181,18 +184,22 @@ export default function TeamsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Color</Label>
-                    <Input
-                      type="color"
-                      value={newTeam.color}
-                      onChange={(e) => setNewTeam({ ...newTeam, color: e.target.value })}
-                      className="h-10 p-1 cursor-pointer"
-                    />
+                    <Label htmlFor="team-color">Color</Label>
+                    <div className="relative">
+                      <Input
+                        id="team-color"
+                        type="color"
+                        value={newTeam.color}
+                        onChange={(e) => setNewTeam({ ...newTeam, color: e.target.value })}
+                        className="h-10 cursor-pointer"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Requirements (comma-separated)</Label>
+                  <Label htmlFor="team-requirements">Requirements (comma-separated)</Label>
                   <Input
+                    id="team-requirements"
                     value={newTeam.requirements}
                     onChange={(e) => setNewTeam({ ...newTeam, requirements: e.target.value })}
                     placeholder="e.g., Technical aptitude, Creativity"

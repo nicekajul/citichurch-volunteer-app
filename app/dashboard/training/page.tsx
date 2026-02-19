@@ -349,7 +349,7 @@ export default function TrainingPage() {
                 Add Training
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Training Module</DialogTitle>
                 <DialogDescription>
@@ -358,63 +358,69 @@ export default function TrainingPage() {
                     : "Create a new training module with video and/or documents"}
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-5 py-4">
                 <div className="space-y-2">
-                  <Label>Title</Label>
+                  <Label htmlFor="training-title">Title</Label>
                   <Input
+                    id="training-title"
                     value={newVideo.title}
                     onChange={(e) => setNewVideo({ ...newVideo, title: e.target.value })}
                     placeholder="e.g., Advanced Lighting Techniques"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label htmlFor="training-description">Description</Label>
                   <Textarea
+                    id="training-description"
                     value={newVideo.description}
                     onChange={(e) => setNewVideo({ ...newVideo, description: e.target.value })}
                     placeholder="Brief description of what this training covers"
+                    rows={3}
                   />
                 </div>
 
-                <div className="space-y-4 pt-2 border-t">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
-                      <Label>Include Video</Label>
-                      <p className="text-xs text-muted-foreground">Add a video to this training module</p>
+                      <Label htmlFor="include-video" className="font-medium">Include Video</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Add a video to this training module</p>
                     </div>
                     <Switch
+                      id="include-video"
                       checked={newVideo.hasVideo}
                       onCheckedChange={(checked) => setNewVideo({ ...newVideo, hasVideo: checked })}
                     />
                   </div>
 
                   {newVideo.hasVideo && (
-                    <>
+                    <div className="space-y-3 pl-4 border-l-2 border-primary/20">
                       <div className="space-y-2">
-                        <Label>Video URL</Label>
+                        <Label htmlFor="video-url">Video URL</Label>
                         <Input
+                          id="video-url"
                           value={newVideo.videoUrl}
                           onChange={(e) => setNewVideo({ ...newVideo, videoUrl: e.target.value })}
-                          placeholder="https://..."
+                          placeholder="https://www.w3schools.com/html/mov_bbb.mp4"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Duration (seconds)</Label>
+                        <Label htmlFor="video-duration">Duration (seconds)</Label>
                         <Input
+                          id="video-duration"
                           type="number"
                           value={newVideo.duration}
                           onChange={(e) => setNewVideo({ ...newVideo, duration: Number.parseInt(e.target.value) || 0 })}
                         />
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
 
-                <div className="space-y-3 pt-2 border-t">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
-                      <Label>Training Documents</Label>
-                      <p className="text-xs text-muted-foreground">Add downloadable files for volunteers</p>
+                      <Label className="font-medium">Training Documents</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Add downloadable files for volunteers</p>
                     </div>
                     <Upload className="w-4 h-4 text-muted-foreground" />
                   </div>
@@ -424,15 +430,15 @@ export default function TrainingPage() {
                       placeholder="Document name"
                       value={newDocName}
                       onChange={(e) => setNewDocName(e.target.value)}
-                      className="flex-1"
+                      className="flex-[2]"
                     />
                     <Input
                       placeholder="URL or path"
                       value={newDocUrl}
                       onChange={(e) => setNewDocUrl(e.target.value)}
-                      className="flex-1"
+                      className="flex-[3]"
                     />
-                    <Button type="button" size="icon" variant="outline" onClick={handleAddDocument}>
+                    <Button type="button" size="icon" variant="outline" onClick={handleAddDocument} disabled={!newDocName.trim() || !newDocUrl.trim()}>
                       <Plus className="w-4 h-4" />
                     </Button>
                   </div>
@@ -494,32 +500,35 @@ export default function TrainingPage() {
                   />
                 </div>
 
-                <div className="space-y-4 pt-2 border-t">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
-                      <Label>Enable Quiz</Label>
-                      <p className="text-xs text-muted-foreground">Add a quiz after this module</p>
+                      <Label htmlFor="enable-quiz" className="font-medium">Enable Quiz</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Add a quiz after this module</p>
                     </div>
                     <Switch
+                      id="enable-quiz"
                       checked={newVideo.quizEnabled}
                       onCheckedChange={(checked) => setNewVideo({ ...newVideo, quizEnabled: checked })}
                     />
                   </div>
                   {newVideo.quizEnabled && (
-                    <>
-                      <div className="flex items-center justify-between">
+                    <div className="space-y-3 pl-4 border-l-2 border-primary/20">
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
                         <div>
-                          <Label>Require Passing</Label>
+                          <Label htmlFor="require-passing" className="text-sm">Require Passing</Label>
                           <p className="text-xs text-muted-foreground">Must pass to proceed</p>
                         </div>
                         <Switch
+                          id="require-passing"
                           checked={newVideo.quizRequired}
                           onCheckedChange={(checked) => setNewVideo({ ...newVideo, quizRequired: checked })}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Passing Score (%)</Label>
+                        <Label htmlFor="passing-score">Passing Score (%)</Label>
                         <Input
+                          id="passing-score"
                           type="number"
                           min={0}
                           max={100}
@@ -529,7 +538,7 @@ export default function TrainingPage() {
                           }
                         />
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
