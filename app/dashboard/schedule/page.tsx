@@ -51,18 +51,18 @@ export default function SchedulePage() {
   const [selectedTeam, setSelectedTeam] = useState("")
   const [selectedRole, setSelectedRole] = useState("")
 
-  const canCreate = user?.role === "admin" || user?.role === "team_leader"
+  const canCreate = user?.role === "admin" || user?.role === "leader"
 
   const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.teamId)
 
   const availableVolunteers = users.filter((u) => {
     if (user?.role === "admin") return u.role === "volunteer"
-    if (user?.role === "team_leader") return u.role === "volunteer" && u.teamId === user.teamId
+    if (user?.role === "leader") return u.role === "volunteer" && u.teamId === user.teamId
     return false
   })
 
   const getDefaultTeamId = () => {
-    if (user?.role === "team_leader" && user.teamId) {
+    if (user?.role === "leader" && user.teamId) {
       return user.teamId
     }
     return ""
@@ -96,7 +96,7 @@ export default function SchedulePage() {
   const handleAddAssignment = () => {
     if (!selectedVolunteer || !selectedRole) return
 
-    const teamId = user?.role === "team_leader" && user.teamId ? user.teamId : selectedTeam
+    const teamId = user?.role === "leader" && user.teamId ? user.teamId : selectedTeam
     if (!teamId) return
 
     setNewSchedule({
@@ -122,7 +122,7 @@ export default function SchedulePage() {
   }
 
   const handleOpenDialog = () => {
-    if (user?.role === "team_leader" && user.teamId) {
+    if (user?.role === "leader" && user.teamId) {
       setSelectedTeam(user.teamId)
     }
     setIsOpen(true)
@@ -134,7 +134,7 @@ export default function SchedulePage() {
   // Filter schedules based on role
   const filteredSchedules = serviceSchedules.filter((s) => {
     if (user?.role === "admin") return true
-    if (user?.role === "team_leader") {
+    if (user?.role === "leader") {
       return s.assignments.some((a) => a.teamId === user.teamId)
     }
     if (user?.role === "volunteer") {

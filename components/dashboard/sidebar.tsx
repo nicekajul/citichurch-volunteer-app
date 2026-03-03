@@ -29,25 +29,25 @@ interface NavItem {
   label: string
   href: string
   icon: React.ElementType
-  roles: ("admin" | "team_leader" | "volunteer")[]
+  roles: ("admin" | "leader" | "volunteer")[]
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "team_leader", "volunteer"] },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "leader", "volunteer"] },
   { label: "Team Management", href: "/dashboard/teams", icon: Users, roles: ["admin"] },
-  { label: "My Team", href: "/dashboard/my-team", icon: Users, roles: ["team_leader"] },
-  { label: "Training Videos", href: "/dashboard/training", icon: Video, roles: ["admin", "team_leader"] },
+  { label: "My Team", href: "/dashboard/my-team", icon: Users, roles: ["leader"] },
+  { label: "Training Videos", href: "/dashboard/training", icon: Video, roles: ["admin", "leader"] },
   { label: "My Training", href: "/dashboard/my-training", icon: BookOpen, roles: ["volunteer"] },
-  { label: "Volunteers", href: "/dashboard/volunteers", icon: UserCircle, roles: ["admin", "team_leader"] },
-  { label: "Schedule", href: "/dashboard/schedule", icon: Calendar, roles: ["admin", "team_leader", "volunteer"] },
+  { label: "Volunteers", href: "/dashboard/volunteers", icon: UserCircle, roles: ["admin", "leader"] },
+  { label: "Schedule", href: "/dashboard/schedule", icon: Calendar, roles: ["admin", "leader", "volunteer"] },
   {
     label: "Announcements",
     href: "/dashboard/announcements",
     icon: Bell,
-    roles: ["admin", "team_leader", "volunteer"],
+    roles: ["admin", "leader", "volunteer"],
   },
   { label: "Certificates", href: "/dashboard/certificates", icon: Award, roles: ["volunteer"] },
-  { label: "Profile", href: "/dashboard/profile", icon: UserCircle, roles: ["admin", "team_leader", "volunteer"] },
+  { label: "Profile", href: "/dashboard/profile", icon: UserCircle, roles: ["admin", "leader", "volunteer"] },
   { label: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["admin"] },
 ]
 
@@ -71,7 +71,7 @@ export function Sidebar() {
     switch (user.role) {
       case "admin":
         return "/dashboard/admin"
-      case "team_leader":
+      case "leader":
         return "/dashboard/leader"
       case "volunteer":
         return "/dashboard/volunteer"

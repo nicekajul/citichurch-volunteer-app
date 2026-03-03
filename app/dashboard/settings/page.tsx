@@ -268,7 +268,7 @@ export default function SettingsPage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Role</span>
                       <span className="text-sm font-medium capitalize">
-                        {user?.role === "team_leader" ? "Team Leader" : user?.role}
+                        {user?.role === "leader" ? "Team Leader" : user?.role}
                       </span>
                     </div>
                     <div className="flex justify-between">
