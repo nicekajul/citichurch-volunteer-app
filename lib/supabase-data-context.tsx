@@ -69,6 +69,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
 export function SupabaseDataProvider({ children }: { children: ReactNode }) {
+  // createClient() returns the same singleton instance every call
   const supabase = createClient()
   
   const [users, setUsers] = useState<User[]>([])
@@ -298,7 +299,6 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
   // Only load data when an authenticated session exists
   useEffect(() => {
-    const supabase = createClient()
     let mounted = true
 
     const loadAllData = async () => {

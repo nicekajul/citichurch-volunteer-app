@@ -38,8 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  // createClient() returns the same singleton so session is shared across providers
   const supabase = createClient()
-  // Prevent concurrent profile fetches
   const isFetchingRef = { current: false }
 
   const fetchProfile = async (userId: string): Promise<Profile | null> => {
@@ -69,10 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const supabaseInstance = createClient()
-
     // Set up auth state listener FIRST before checking session
-    const { data: { subscription } } = supabaseInstance.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
