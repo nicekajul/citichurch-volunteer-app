@@ -39,8 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabase = createClient()
+  // Prevent concurrent profile fetches
+  const isFetchingRef = { current: false }
 
-  const fetchProfile = async (userId: string, retries = 3): Promise<Profile | null> => {
+  const fetchProfile = async (userId: string): Promise<Profile | null> => {
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -48,93 +50,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq("id", userId)
         .single()
 
-      if (error) {
-        console.error("[v0] Error fetching profile:", error)
-        
-        // Retry on network errors
-        if (retries > 0 && (error.message.includes("fetch") || error.message.includes("network"))) {
-          console.log("[v0] Retrying profile fetch, attempts remaining:", retries)
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          return fetchProfile(userId, retries - 1)
-        }
-        
-        return null
-      }
-
+      if (error) return null
       return data as Profile
-    } catch (error) {
-      console.error("[v0] Exception fetching profile:", error)
-      
-      // Retry on exceptions
-      if (retries > 0) {
-        console.log("[v0] Retrying after exception, attempts remaining:", retries)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        return fetchProfile(userId, retries - 1)
-      }
-      
+    } catch {
       return null
     }
   }
 
   const refreshProfile = async () => {
-    const { data: { user: supabaseUser } } = await supabase.auth.getUser()
-    if (supabaseUser) {
-      const profileData = await fetchProfile(supabaseUser.id)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const profileData = await fetchProfile(session.user.id)
       if (profileData) {
         setProfile(profileData)
-        setUser({ ...profileData, supabase_user: supabaseUser })
+        setUser({ ...profileData, supabase_user: session.user })
       }
     }
   }
 
   useEffect(() => {
-    // Check for existing session
-    const checkSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        if (error) {
-          setIsLoading(false)
-          return
-        }
-        
-        if (session?.user) {
-          const profileData = await fetchProfile(session.user.id)
-          if (profileData) {
-            setProfile(profileData)
-            setUser({ ...profileData, supabase_user: session.user })
-          }
-        }
-      } catch (error) {
-        console.error("[v0] Exception in checkSession:", error)
-      } finally {
+    const supabaseInstance = createClient()
+
+    // Set up auth state listener FIRST before checking session
+    const { data: { subscription } } = supabaseInstance.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
         setIsLoading(false)
+        return
       }
-    }
 
-    checkSession()
-
-    // Listen for auth changes - only respond to actual sign in/out events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        if (session?.user && event === 'SIGNED_IN') {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        // Guard against concurrent fetches
+        if (isFetchingRef.current) return
+        isFetchingRef.current = true
+        try {
           const profileData = await fetchProfile(session.user.id)
           if (profileData) {
             setProfile(profileData)
             setUser({ ...profileData, supabase_user: session.user })
           }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setProfile(null)
+        } finally {
+          isFetchingRef.current = false
+          setIsLoading(false)
         }
-      } catch (error) {
-        console.error("[v0] Error in auth state change handler:", error)
+        return
       }
+
+      // TOKEN_REFRESHED and other events - don't re-fetch profile
+      if (event === 'TOKEN_REFRESHED') return
+
+      setIsLoading(false)
     })
 
     return () => {
       subscription.unsubscribe()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
