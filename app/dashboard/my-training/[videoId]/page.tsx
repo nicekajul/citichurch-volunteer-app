@@ -207,73 +207,93 @@ export default function TrainingVideoPage() {
             <div className="lg:col-span-2 space-y-4">
               <Card className="border-border/50 overflow-hidden">
                 <div className="relative bg-black aspect-video">
-                  <video
-                    ref={videoRef}
-                    src={video.videoUrl}
-                    className="w-full h-full"
-                    onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={() => setIsPlaying(false)}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    muted={isMuted}
-                  />
+                  {video.videoUrl ? (
+                    <>
+                      <video
+                        ref={videoRef}
+                        src={video.videoUrl}
+                        className="w-full h-full"
+                        onTimeUpdate={handleTimeUpdate}
+                        onLoadedMetadata={handleLoadedMetadata}
+                        onEnded={() => setIsPlaying(false)}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onError={() => setIsPlaying(false)}
+                        muted={isMuted}
+                      />
 
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
-                    <input
-                      type="range"
-                      min={0}
-                      max={duration || 100}
-                      value={currentTime}
-                      onChange={handleSeek}
-                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer mb-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
-                    />
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+                        <input
+                          type="range"
+                          min={0}
+                          max={duration || 100}
+                          value={currentTime}
+                          onChange={handleSeek}
+                          className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer mb-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
+                        />
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-white hover:bg-white/20"
-                          onClick={handleVideoPlay}
-                        >
-                          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-white hover:bg-white/20"
-                          onClick={() => {
-                            if (videoRef.current) {
-                              videoRef.current.currentTime = 0
-                              setCurrentTime(0)
-                            }
-                          }}
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-white hover:bg-white/20"
-                          onClick={() => setIsMuted(!isMuted)}
-                        >
-                          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                        </Button>
-                        <span className="text-white text-sm ml-2">
-                          {formatTime(currentTime)} / {formatTime(duration)}
-                        </span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-white hover:bg-white/20"
+                              onClick={handleVideoPlay}
+                            >
+                              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-white hover:bg-white/20"
+                              onClick={() => {
+                                if (videoRef.current) {
+                                  videoRef.current.currentTime = 0
+                                  setCurrentTime(0)
+                                }
+                              }}
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-white hover:bg-white/20"
+                              onClick={() => setIsMuted(!isMuted)}
+                            >
+                              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                            </Button>
+                            <span className="text-white text-sm ml-2">
+                              {formatTime(currentTime)} / {formatTime(duration)}
+                            </span>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-white hover:bg-white/20"
+                            onClick={() => videoRef.current?.requestFullscreen()}
+                          >
+                            <Maximize className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-white hover:bg-white/20"
-                        onClick={() => videoRef.current?.requestFullscreen()}
-                      >
-                        <Maximize className="w-4 h-4" />
-                      </Button>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-white/60">
+                      <Play className="w-12 h-12 opacity-40" />
+                      <p className="text-sm">No video available for this module</p>
+                      {!canComplete && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 border-white/20 text-white hover:bg-white/10"
+                          onClick={() => setCanComplete(true)}
+                        >
+                          Mark as Ready to Complete
+                        </Button>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <CardContent className="p-4">
