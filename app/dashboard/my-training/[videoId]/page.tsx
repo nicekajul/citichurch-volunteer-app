@@ -77,20 +77,29 @@ export default function TrainingVideoPage() {
   }, [currentTime, duration])
 
   useEffect(() => {
-    if (myProgress?.watchedSeconds && videoRef.current) {
-      videoRef.current.currentTime = myProgress.watchedSeconds
-      setCurrentTime(myProgress.watchedSeconds)
-    }
-  }, [myProgress?.watchedSeconds])
-
-  const handleVideoPlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause()
-      } else {
-        videoRef.current.play()
+    if (myProgress?.watchedSeconds && videoRef.current && video?.videoUrl) {
+      try {
+        videoRef.current.currentTime = myProgress.watchedSeconds
+        setCurrentTime(myProgress.watchedSeconds)
+      } catch {
+        // Ignore seek errors when source is not ready
       }
-      setIsPlaying(!isPlaying)
+    }
+  }, [myProgress?.watchedSeconds, video?.videoUrl])
+
+  const handleVideoPlay = async () => {
+    if (!videoRef.current) return
+    if (isPlaying) {
+      videoRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      try {
+        await videoRef.current.play()
+        setIsPlaying(true)
+      } catch {
+        // Video source unavailable or playback failed — stay paused
+        setIsPlaying(false)
+      }
     }
   }
 
