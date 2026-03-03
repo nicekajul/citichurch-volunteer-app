@@ -69,7 +69,8 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
 export function SupabaseDataProvider({ children }: { children: ReactNode }) {
-  // createClient() returns the same singleton instance every call
+  // createClient() returns the same singleton instance every call.
+  // It throws if env vars are missing, which surfaces a clear error in dev.
   const supabase = createClient()
   
   const [users, setUsers] = useState<User[]>([])

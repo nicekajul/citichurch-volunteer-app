@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useData } from "@/lib/data-context"
 import { useAuth } from "@/lib/auth-context"
@@ -30,6 +30,46 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
+// Extract YouTube video ID from various URL formats
+function getYouTubeId(url: string): string | null {
+  const patterns = [
+    /youtu\.be\/([^?&]+)/,
+    /youtube\.com\/watch\?v=([^&]+)/,
+    /youtube\.com\/embed\/([^?&]+)/,
+    /youtube\.com\/shorts\/([^?&]+)/,
+  ]
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match) return match[1]
+  }
+  return null
+}
+
+// Extract Vimeo video ID
+function getVimeoId(url: string): string | null {
+  const match = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  return match ? match[1] : null
+}
+
+// Returns embed URL if the video is a YouTube or Vimeo link, otherwise null
+function getEmbedUrl(url: string): { type: "youtube" | "vimeo"; embedUrl: string } | null {
+  const youtubeId = getYouTubeId(url)
+  if (youtubeId) {
+    return {
+      type: "youtube",
+      embedUrl: `https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&rel=0&modestbranding=1`,
+    }
+  }
+  const vimeoId = getVimeoId(url)
+  if (vimeoId) {
+    return {
+      type: "vimeo",
+      embedUrl: `https://player.vimeo.com/video/${vimeoId}?api=1`,
+    }
+  }
+  return null
+}
+
 export default function TrainingVideoPage() {
   const params = useParams()
   const router = useRouter()
@@ -42,6 +82,7 @@ export default function TrainingVideoPage() {
   const myProgress = trainingProgress.find((p) => p.oderId === user?.id && p.videoId === videoId)
 
   const videoRef = useRef<HTMLVideoElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -51,6 +92,65 @@ export default function TrainingVideoPage() {
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({})
   const [quizSubmitted, setQuizSubmitted] = useState(false)
   const [quizScore, setQuizScore] = useState<number | null>(null)
+
+  // Detect if the video URL is an embeddable link (YouTube/Vimeo)
+  const embedInfo = video?.videoUrl ? getEmbedUrl(video.videoUrl) : null
+  const isEmbedVideo = embedInfo !== null
+
+  // Track YouTube iframe progress via postMessage
+  const ytInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const pollYouTubeProgress = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "getCurrentTime", args: [] }),
+        "*"
+      )
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "getDuration", args: [] }),
+        "*"
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isEmbedVideo) return
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data
+        // YouTube IFrame API events
+        if (data?.event === "infoDelivery" && data?.info) {
+          if (typeof data.info.currentTime === "number") {
+            setCurrentTime(data.info.currentTime)
+          }
+          if (typeof data.info.duration === "number" && data.info.duration > 0) {
+            setDuration(data.info.duration)
+          }
+          if (typeof data.info.playerState === "number") {
+            setIsPlaying(data.info.playerState === 1)
+          }
+        }
+        if (data?.event === "onStateChange") {
+          // 1 = playing, 2 = paused, 0 = ended
+          setIsPlaying(data.info === 1)
+          if (data.info === 1) {
+            ytInterval.current = setInterval(pollYouTubeProgress, 1000)
+          } else {
+            if (ytInterval.current) clearInterval(ytInterval.current)
+          }
+        }
+      } catch {
+        // ignore non-JSON messages
+      }
+    }
+
+    window.addEventListener("message", handleMessage)
+    return () => {
+      window.removeEventListener("message", handleMessage)
+      if (ytInterval.current) clearInterval(ytInterval.current)
+    }
+  }, [isEmbedVideo, pollYouTubeProgress])
 
   const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user?.teamId)
   const currentIndex = relevantVideos.findIndex((v) => v.id === videoId)
@@ -216,7 +316,18 @@ export default function TrainingVideoPage() {
             <div className="lg:col-span-2 space-y-4">
               <Card className="border-border/50 overflow-hidden">
                 <div className="relative bg-black aspect-video">
-                  {video.videoUrl ? (
+                  {video.videoUrl && isEmbedVideo ? (
+                    // YouTube / Vimeo embed
+                    <iframe
+                      ref={iframeRef}
+                      src={embedInfo!.embedUrl}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      title={video.title}
+                    />
+                  ) : video.videoUrl ? (
+                    // Native video (direct file URL)
                     <>
                       <video
                         ref={videoRef}
@@ -230,7 +341,6 @@ export default function TrainingVideoPage() {
                         onError={() => setIsPlaying(false)}
                         muted={isMuted}
                       />
-
                       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                         <input
                           type="range"
@@ -240,64 +350,37 @@ export default function TrainingVideoPage() {
                           onChange={handleSeek}
                           className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer mb-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
                         />
-
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-white hover:bg-white/20"
-                              onClick={handleVideoPlay}
-                            >
+                            <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={handleVideoPlay}>
                               {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
                               className="text-white hover:bg-white/20"
-                              onClick={() => {
-                                if (videoRef.current) {
-                                  videoRef.current.currentTime = 0
-                                  setCurrentTime(0)
-                                }
-                              }}
+                              onClick={() => { if (videoRef.current) { videoRef.current.currentTime = 0; setCurrentTime(0) } }}
                             >
                               <RotateCcw className="w-4 h-4" />
                             </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-white hover:bg-white/20"
-                              onClick={() => setIsMuted(!isMuted)}
-                            >
+                            <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => setIsMuted(!isMuted)}>
                               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                             </Button>
-                            <span className="text-white text-sm ml-2">
-                              {formatTime(currentTime)} / {formatTime(duration)}
-                            </span>
+                            <span className="text-white text-sm ml-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
                           </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-white hover:bg-white/20"
-                            onClick={() => videoRef.current?.requestFullscreen()}
-                          >
+                          <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => videoRef.current?.requestFullscreen()}>
                             <Maximize className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
                     </>
                   ) : (
+                    // No video URL
                     <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-white/60">
                       <Play className="w-12 h-12 opacity-40" />
                       <p className="text-sm">No video available for this module</p>
                       {!canComplete && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2 border-white/20 text-white hover:bg-white/10"
-                          onClick={() => setCanComplete(true)}
-                        >
+                        <Button size="sm" variant="outline" className="mt-2 border-white/20 text-white hover:bg-white/10" onClick={() => setCanComplete(true)}>
                           Mark as Ready to Complete
                         </Button>
                       )}
@@ -337,17 +420,37 @@ export default function TrainingVideoPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Watch Progress</span>
-                      <span className="font-medium">{watchedPercentage}%</span>
+                      <span className="font-medium">
+                        {isEmbedVideo && !duration ? "—" : `${watchedPercentage}%`}
+                      </span>
                     </div>
-                    <Progress value={watchedPercentage} className="h-2" />
-                    {!canComplete && (
-                      <p className="text-xs text-muted-foreground">
-                        Watch at least 90% of the video to mark as complete
-                      </p>
+                    <Progress value={isEmbedVideo && !duration ? (canComplete ? 100 : 0) : watchedPercentage} className="h-2" />
+                    {isEmbedVideo ? (
+                      !canComplete && (
+                        <p className="text-xs text-muted-foreground">
+                          Watch the video above, then click &quot;Mark as Watched&quot; when done
+                        </p>
+                      )
+                    ) : (
+                      !canComplete && (
+                        <p className="text-xs text-muted-foreground">
+                          Watch at least 90% of the video to mark as complete
+                        </p>
+                      )
                     )}
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-4 space-y-2">
+                    {isEmbedVideo && !canComplete && !isCompleted && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setCanComplete(true)}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Mark as Watched
+                      </Button>
+                    )}
                     {isCompleted ? (
                       <Button variant="outline" className="w-full bg-transparent" disabled>
                         <CheckCircle2 className="w-4 h-4 mr-2" />
