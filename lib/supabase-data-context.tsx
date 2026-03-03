@@ -296,9 +296,13 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Initial load
+  // Only load data when an authenticated session exists
   useEffect(() => {
+    const supabase = createClient()
+    let mounted = true
+
     const loadAllData = async () => {
+      if (!mounted) return
       setIsLoading(true)
       await Promise.all([
         refreshUsers(),
@@ -308,10 +312,29 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshAnnouncements(),
         refreshSchedules(),
       ])
-      setIsLoading(false)
+      if (mounted) setIsLoading(false)
     }
 
-    loadAllData()
+    // Listen for auth changes — only fetch data when signed in
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED")) {
+        loadAllData()
+      } else if (event === "SIGNED_OUT") {
+        setUsers([])
+        setTeams([])
+        setTrainingVideos([])
+        setQuizzes([])
+        setTrainingProgress([])
+        setAnnouncements([])
+        setServiceSchedules([])
+        setIsLoading(false)
+      }
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   // User management
