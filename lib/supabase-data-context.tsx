@@ -89,7 +89,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .select("*")
         .order("created_at", { ascending: false })
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
 
       const mappedUsers: User[] = (data || []).map((profile) => ({
         id: profile.id,
@@ -120,7 +120,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .select("*")
         .order("name")
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
 
       const mappedTeams: Team[] = (data || []).map((team) => ({
         id: team.id,
@@ -148,7 +148,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         supabase.from("quiz_questions").select("*").order("training_module_id, order_index"),
       ])
 
-      if (modulesRes.error) throw modulesRes.error
+      if (modulesRes.error) throw new Error(modulesRes.error.message)
 
       // Map modules to training videos
       const mappedVideos: TrainingVideo[] = (modulesRes.data || []).map((module) => {
@@ -214,7 +214,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .from("training_progress")
         .select("*")
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
 
       const mappedProgress: TrainingProgress[] = (data || []).map((p) => ({
         id: p.id,
@@ -243,7 +243,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .select("*")
         .order("created_at", { ascending: false })
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
 
       const mappedAnnouncements: Announcement[] = (data || []).map((a) => ({
         id: a.id,
@@ -270,7 +270,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         supabase.from("schedule_assignments").select("*"),
       ])
 
-      if (schedulesRes.error) throw schedulesRes.error
+      if (schedulesRes.error) throw new Error(schedulesRes.error.message)
 
       const mappedSchedules: ServiceSchedule[] = (schedulesRes.data || []).map((s) => {
         const scheduleAssignments = (assignmentsRes.data || [])
@@ -315,9 +315,9 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       if (mounted) setIsLoading(false)
     }
 
-    // Listen for auth changes — only fetch data when signed in
+    // Listen for auth changes — only fetch data when signed in (not on token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED")) {
+      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
         loadAllData()
       } else if (event === "SIGNED_OUT") {
         setUsers([])
@@ -418,21 +418,25 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
   // Training management
   const addTrainingVideo = async (video: Omit<TrainingVideo, "id">) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const currentUserId = sessionData?.session?.user?.id
+
     const { data, error } = await supabase
       .from("training_modules")
       .insert({
         title: video.title,
         description: video.description,
-        video_url: video.videoUrl,
-        duration: video.duration,
-        team_id: video.teamId,
-        quiz_enabled: video.quizEnabled,
-        required: video.quizRequired,
+        video_url: video.videoUrl || null,
+        duration: video.duration || 0,
+        team_id: video.teamId || null,
+        quiz_enabled: video.quizEnabled ?? false,
+        required: video.quizRequired ?? false,
+        created_by: currentUserId,
       })
       .select()
       .single()
 
-    if (error) throw error
+    if (error) throw new Error(error.message)
 
     // Add documents if any
     if (video.documents && video.documents.length > 0 && data) {
