@@ -50,7 +50,7 @@ const navItems: NavItem[] = [
     roles: ["admin", "leader", "volunteer"],
   },
   { label: "Certificates", href: "/dashboard/certificates", icon: Award, roles: ["volunteer"] },
-  { label: "Apply for Ministry", href: "/dashboard/apply", icon: UserPlus, roles: ["volunteer"] },
+  { label: "Apply for Ministry", href: "/apply", icon: UserPlus, roles: ["volunteer"] },
   { label: "Applications", href: "/dashboard/applications", icon: ClipboardList, roles: ["admin"] },
   { label: "Profile", href: "/dashboard/profile", icon: UserCircle, roles: ["admin", "leader", "volunteer"] },
   { label: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["admin"] },
@@ -76,7 +76,7 @@ export function Sidebar() {
     if (!user) return false
     if (!item.roles.includes(user.role)) return false
     // Hide "Apply for Ministry" if the volunteer already belongs to a team
-    if (item.href === "/dashboard/apply" && user.teamId) return false
+    if (item.href === "/apply" && user.teamId) return false
     return true
   })
 

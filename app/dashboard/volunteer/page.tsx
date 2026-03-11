@@ -162,7 +162,7 @@ export default function VolunteerDashboard() {
                       <p className="font-semibold text-sm">Not yet part of a ministry team?</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Apply to join a production ministry and serve your community.</p>
                     </div>
-                    <Link href="/dashboard/apply">
+                    <Link href="/apply">
                       <Button size="sm" className="gap-2 shrink-0">
                         Apply for Ministry <ArrowRight className="w-4 h-4" />
                       </Button>
@@ -192,7 +192,7 @@ export default function VolunteerDashboard() {
                         {appTeam?.name} · Submitted {new Date(myApp.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                       </p>
                     </div>
-                    <Link href="/dashboard/apply">
+                    <Link href="/apply">
                       <Button variant="outline" size="sm">View Status</Button>
                     </Link>
                   </div>
