@@ -90,6 +90,20 @@ export interface ServiceSchedule {
   assignments: { oderId: string; teamId: string; role: string }[]
 }
 
+export interface MinistryApplication {
+  id: string
+  applicantId: string
+  teamId: string
+  motivation: string
+  experience: string
+  availability: string[]
+  status: "pending" | "approved" | "rejected"
+  reviewedBy?: string
+  reviewNotes?: string
+  createdAt: string
+  updatedAt: string
+}
+
 // Initial Data
 export const initialUsers: User[] = [
   {

@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation"
 
 export default function VolunteerDashboard() {
   const { user } = useAuth()
-  const { teams, trainingVideos, trainingProgress, announcements, serviceSchedules } = useData()
+  const { teams, trainingVideos, trainingProgress, announcements, serviceSchedules, ministryApplications } = useData()
   const router = useRouter()
 
   if (user?.role !== "volunteer") {
@@ -149,6 +149,59 @@ export default function VolunteerDashboard() {
             icon={Calendar}
           />
         </div>
+
+        {/* Ministry Application Status */}
+        {(() => {
+          const myApp = ministryApplications.find((a) => a.applicantId === user.id)
+          if (!myApp && !user.teamId) {
+            return (
+              <Card className="border-dashed border-primary/40 bg-primary/5">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="font-semibold text-sm">Not yet part of a ministry team?</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Apply to join a production ministry and serve your community.</p>
+                    </div>
+                    <Link href="/dashboard/apply">
+                      <Button size="sm" className="gap-2 shrink-0">
+                        Apply for Ministry <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          }
+          if (myApp) {
+            const appTeam = teams.find((t) => t.id === myApp.teamId)
+            const statusMap = {
+              pending: { label: "Under Review", color: "text-amber-600", bg: "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/50" },
+              approved: { label: "Approved", color: "text-green-600", bg: "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/50" },
+              rejected: { label: "Not Approved", color: "text-red-600", bg: "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800/50" },
+            }
+            const s = statusMap[myApp.status]
+            return (
+              <Card className={`border ${s.bg}`}>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="font-semibold text-sm">
+                        Ministry Application — <span className={s.color}>{s.label}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {appTeam?.name} · Submitted {new Date(myApp.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    </div>
+                    <Link href="/dashboard/apply">
+                      <Button variant="outline" size="sm">View Status</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          }
+          return null
+        })()}
 
         {/* Progress Banner */}
         <Card className="border-border/50 bg-gradient-to-r from-primary/5 to-transparent">

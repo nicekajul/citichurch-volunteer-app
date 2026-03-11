@@ -22,8 +22,11 @@ import {
   Bell,
   ChevronLeft,
   Menu,
+  ClipboardList,
+  UserPlus,
 } from "lucide-react"
 import { useState } from "react"
+import { useData } from "@/lib/data-context"
 
 interface NavItem {
   label: string
@@ -47,6 +50,8 @@ const navItems: NavItem[] = [
     roles: ["admin", "leader", "volunteer"],
   },
   { label: "Certificates", href: "/dashboard/certificates", icon: Award, roles: ["volunteer"] },
+  { label: "Apply for Ministry", href: "/dashboard/apply", icon: UserPlus, roles: ["volunteer"] },
+  { label: "Applications", href: "/dashboard/applications", icon: ClipboardList, roles: ["admin"] },
   { label: "Profile", href: "/dashboard/profile", icon: UserCircle, roles: ["admin", "leader", "volunteer"] },
   { label: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["admin"] },
 ]
@@ -54,17 +59,26 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { ministryApplications } = useData()
   const router = useRouter()
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const pendingApplicationsCount = ministryApplications.filter((a) => a.status === "pending").length
 
   const handleLogout = () => {
     logout()
     router.push("/login")
   }
 
-  const filteredNavItems = navItems.filter((item) => user && item.roles.includes(user.role))
+  const filteredNavItems = navItems.filter((item) => {
+    if (!user) return false
+    if (!item.roles.includes(user.role)) return false
+    // Hide "Apply for Ministry" if the volunteer already belongs to a team
+    if (item.href === "/dashboard/apply" && user.teamId) return false
+    return true
+  })
 
   const getDashboardHref = () => {
     if (!user) return "/dashboard"
@@ -146,7 +160,7 @@ export function Sidebar() {
                     setMobileOpen(false)
                   }}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm",
+                    "relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm",
                     active
                       ? "bg-sidebar-primary text-sidebar-primary-foreground"
                       : "hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground",
@@ -155,7 +169,19 @@ export function Sidebar() {
                   title={collapsed ? item.label : undefined}
                 >
                   <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && (
+                    <span className="flex-1 flex items-center justify-between gap-2">
+                      {item.label}
+                      {item.href === "/dashboard/applications" && pendingApplicationsCount > 0 && (
+                        <span className="ml-auto text-xs font-semibold bg-red-500 text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                          {pendingApplicationsCount}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {collapsed && item.href === "/dashboard/applications" && pendingApplicationsCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+                  )}
                 </button>
               )
             })}
