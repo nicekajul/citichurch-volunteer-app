@@ -38,7 +38,7 @@ const teamIcons: Record<string, React.ElementType> = {
 }
 
 export default function AdminDashboard() {
-  const { users, teams, trainingVideos, trainingProgress, announcements } = useData()
+  const { users, teams, trainingVideos, trainingProgress, announcements, ministryApplications } = useData()
 
   const volunteers = users.filter((u) => u.role === "volunteer")
   const activeVolunteers = volunteers.filter((u) => u.status === "active")
@@ -99,11 +99,11 @@ export default function AdminDashboard() {
             icon={TrendingUp}
           />
           <StatsCard
-            title="Pending Approvals"
-            value={pendingVolunteers.length}
+            title="Ministry Applications"
+            value={ministryApplications.filter((a) => a.status === "pending").length}
             change="Awaiting review"
-            changeType={pendingVolunteers.length > 0 ? "negative" : "neutral"}
-            icon={Award}
+            changeType={ministryApplications.filter((a) => a.status === "pending").length > 0 ? "negative" : "neutral"}
+            icon={AlertCircle}
           />
         </div>
 
@@ -187,6 +187,53 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Ministry Applications Card */}
+        {ministryApplications.filter((a) => a.status === "pending").length > 0 && (
+          <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800/50">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-500" />
+                  Pending Ministry Applications
+                </CardTitle>
+                <CardDescription>
+                  {ministryApplications.filter((a) => a.status === "pending").length} application{ministryApplications.filter((a) => a.status === "pending").length !== 1 ? "s" : ""} awaiting review
+                </CardDescription>
+              </div>
+              <Link href="/dashboard/applications">
+                <Button size="sm" className="gap-2">
+                  Review Now <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {ministryApplications.filter((a) => a.status === "pending").slice(0, 3).map((app) => {
+                  const applicant = users.find((u) => u.id === app.applicantId)
+                  const team = teams.find((t) => t.id === app.teamId)
+                  return (
+                    <div key={app.id} className="flex items-center justify-between p-3 rounded-lg bg-background border border-border/50">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={applicant?.avatar} />
+                          <AvatarFallback>{applicant?.name?.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium text-sm">{applicant?.name}</p>
+                          <p className="text-xs text-muted-foreground">Applied for {team?.name}</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                        Pending
+                      </Badge>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Bottom Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

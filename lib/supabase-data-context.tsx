@@ -5,8 +5,8 @@ import { createClient } from "./supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 // Re-export types from data.ts for compatibility
-export type { UserRole, User, Team, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule } from "./data"
-import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, Quiz } from "./data"
+export type { UserRole, User, Team, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, MinistryApplication } from "./data"
+import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, Quiz, MinistryApplication } from "./data"
 
 interface DataContextType {
   users: User[]
@@ -16,6 +16,7 @@ interface DataContextType {
   trainingProgress: TrainingProgress[]
   announcements: Announcement[]
   serviceSchedules: ServiceSchedule[]
+  ministryApplications: MinistryApplication[]
   isLoading: boolean
   error: string | null
 
@@ -26,6 +27,7 @@ interface DataContextType {
   refreshProgress: () => Promise<void>
   refreshAnnouncements: () => Promise<void>
   refreshSchedules: () => Promise<void>
+  refreshApplications: () => Promise<void>
 
   // User management
   addUser: (user: Omit<User, "id">) => Promise<void>
@@ -59,6 +61,10 @@ interface DataContextType {
   addServiceSchedule: (schedule: Omit<ServiceSchedule, "id">) => Promise<void>
   updateServiceSchedule: (id: string, updates: Partial<ServiceSchedule>) => Promise<void>
 
+  // Ministry Applications
+  submitMinistryApplication: (data: { teamId: string; motivation: string; experience: string; availability: string[] }) => Promise<void>
+  reviewApplication: (id: string, status: "approved" | "rejected", notes: string) => Promise<void>
+
   // Helpers
   getTeamMembers: (teamId: string) => User[]
   getUserProgress: (userId: string) => TrainingProgress[]
@@ -80,6 +86,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const [trainingProgress, setTrainingProgress] = useState<TrainingProgress[]>([])
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [serviceSchedules, setServiceSchedules] = useState<ServiceSchedule[]>([])
+  const [ministryApplications, setMinistryApplications] = useState<MinistryApplication[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -312,6 +319,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshProgress(),
         refreshAnnouncements(),
         refreshSchedules(),
+        refreshApplications(),
       ])
       if (mounted) setIsLoading(false)
     }
@@ -328,6 +336,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         setTrainingProgress([])
         setAnnouncements([])
         setServiceSchedules([])
+        setMinistryApplications([])
         setIsLoading(false)
       }
     })
@@ -648,6 +657,92 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     await refreshSchedules()
   }
 
+  // Ministry Applications
+  const refreshApplications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("ministry_applications")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) throw new Error(error.message)
+
+      const mapped: MinistryApplication[] = (data || []).map((a) => ({
+        id: a.id,
+        applicantId: a.applicant_id,
+        teamId: a.team_id,
+        motivation: a.motivation,
+        experience: a.experience || "",
+        availability: a.availability || [],
+        status: a.status as "pending" | "approved" | "rejected",
+        reviewedBy: a.reviewed_by || undefined,
+        reviewNotes: a.review_notes || undefined,
+        createdAt: a.created_at,
+        updatedAt: a.updated_at,
+      }))
+
+      setMinistryApplications(mapped)
+    } catch (err) {
+      console.error("Error fetching applications:", err)
+    }
+  }
+
+  const submitMinistryApplication = async (data: {
+    teamId: string
+    motivation: string
+    experience: string
+    availability: string[]
+  }) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const currentUserId = sessionData?.session?.user?.id
+    if (!currentUserId) throw new Error("Not authenticated")
+
+    const { error } = await supabase.from("ministry_applications").insert({
+      applicant_id: currentUserId,
+      team_id: data.teamId,
+      motivation: data.motivation,
+      experience: data.experience,
+      availability: data.availability,
+      status: "pending",
+    })
+
+    if (error) throw new Error(error.message)
+    await refreshApplications()
+  }
+
+  const reviewApplication = async (id: string, status: "approved" | "rejected", notes: string) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const currentUserId = sessionData?.session?.user?.id
+
+    // Get the application to find applicant + team
+    const application = ministryApplications.find((a) => a.id === id)
+    if (!application) throw new Error("Application not found")
+
+    const { error } = await supabase
+      .from("ministry_applications")
+      .update({
+        status,
+        reviewed_by: currentUserId,
+        review_notes: notes,
+      })
+      .eq("id", id)
+
+    if (error) throw new Error(error.message)
+
+    // If approved, assign the volunteer to the team
+    if (status === "approved") {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ team_id: application.teamId, status: "active" })
+        .eq("id", application.applicantId)
+
+      if (profileError) console.error("Error assigning volunteer to team:", profileError)
+      await refreshUsers()
+    }
+
+    await refreshApplications()
+  }
+
   // Helper functions (client-side filtering)
   const getTeamMembers = (teamId: string) => {
     return users.filter((u) => u.teamId === teamId)
@@ -679,6 +774,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         trainingProgress,
         announcements,
         serviceSchedules,
+        ministryApplications,
         isLoading,
         error,
         refreshUsers,
@@ -687,6 +783,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshProgress,
         refreshAnnouncements,
         refreshSchedules,
+        refreshApplications,
         addUser,
         updateUser,
         deleteUser,
@@ -705,6 +802,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         deleteAnnouncement,
         addServiceSchedule,
         updateServiceSchedule,
+        submitMinistryApplication,
+        reviewApplication,
         getTeamMembers,
         getUserProgress,
         getVideoQuiz,
