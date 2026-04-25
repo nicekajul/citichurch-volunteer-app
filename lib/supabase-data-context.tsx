@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "./supabase/client"
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js"
 
 // Re-export types from data.ts for compatibility
 export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication } from "./data"
@@ -172,11 +173,11 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       if (modulesRes.error) throw new Error(modulesRes.error.message)
 
       // Map modules to training videos
-      const mappedVideos: TrainingVideo[] = (modulesRes.data || []).map((module) => {
+      const mappedVideos: TrainingVideo[] = (modulesRes.data || []).map((module: any) => {
         // Get documents for this module
         const moduleDocs = (docsRes.data || [])
-          .filter((doc) => doc.training_module_id === module.id)
-          .map((doc) => ({
+          .filter((doc: any) => doc.training_module_id === module.id)
+          .map((doc: any) => ({
             id: doc.id,
             name: doc.name,
             url: doc.url,
@@ -204,7 +205,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
       // Group quiz questions by module
       const quizMap = new Map<string, Quiz>()
-      ;(quizzesRes.data || []).forEach((q) => {
+      ;(quizzesRes.data || []).forEach((q: any) => {
         if (!quizMap.has(q.training_module_id)) {
           quizMap.set(q.training_module_id, {
             id: `quiz-${q.training_module_id}`,
@@ -240,7 +241,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
       if (error) throw new Error(error.message)
 
-      const mappedProgress: TrainingProgress[] = (data || []).map((p) => ({
+      const mappedProgress: TrainingProgress[] = (data || []).map((p: any) => ({
         id: p.id,
         userId: p.user_id,
         videoId: p.training_module_id,
@@ -269,7 +270,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
       if (error) throw new Error(error.message)
 
-      const mappedAnnouncements: Announcement[] = (data || []).map((a) => ({
+      const mappedAnnouncements: Announcement[] = (data || []).map((a: any) => ({
         id: a.id,
         title: a.title,
         content: a.content,
@@ -297,10 +298,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       if (schedulesRes.error) throw new Error(schedulesRes.error.message)
       if (assignmentsRes.error) throw new Error(assignmentsRes.error.message)
 
-      const mappedSchedules: ServiceSchedule[] = (schedulesRes.data || []).map((s) => {
+      const mappedSchedules: ServiceSchedule[] = (schedulesRes.data || []).map((s: any) => {
         const scheduleAssignments: ScheduleAssignment[] = (assignmentsRes.data || [])
-          .filter((a) => a.schedule_id === s.id)
-          .map((a) => ({
+          .filter((a: any) => a.schedule_id === s.id)
+          .map((a: any) => ({
             id: a.id,
             userId: a.user_id,
             teamId: a.team_id,
@@ -380,7 +381,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
 
     // Directly check session on mount — reliable on browser refresh
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
       if (!mounted) return
       if (session) {
         loadAllData(session)
@@ -390,14 +391,14 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for subsequent auth changes (login / logout / user switch)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (event === "SIGNED_IN" && session) {
         loadAllData(session)
       } else if (event === "SIGNED_OUT") {
         // Verify no new session exists before wiping state. A stale SIGNED_OUT
         // from a previous signOut() can arrive AFTER a new user has already
         // signed in if logout() wasn't awaited before navigating.
-        supabase.auth.getSession().then(({ data: { session: current } }) => {
+        supabase.auth.getSession().then(({ data: { session: current } }: { data: { session: Session | null } }) => {
           if (!current) clearData()
         })
       }
@@ -756,7 +757,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       if (updates.assignments.length > 0) {
         // Preserve status/reason for assignments that already existed
         const statusMap = new Map<string, { status: string; rejection_reason: string | null }>(
-          (existing || []).map((e) => [e.user_id as string, { status: e.status as string, rejection_reason: e.rejection_reason as string | null }])
+          (existing || []).map((e: any) => [e.user_id as string, { status: e.status as string, rejection_reason: e.rejection_reason as string | null }])
         )
         const { error: insertError } = await supabase.from("schedule_assignments").insert(
           updates.assignments.map((a) => {
@@ -824,7 +825,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
       if (error) throw new Error(error.message)
 
-      const mapped: MinistryApplication[] = (data || []).map((a) => ({
+      const mapped: MinistryApplication[] = (data || []).map((a: any) => ({
         id: a.id,
         applicantId: a.applicant_id,
         teamId: a.team_id,
@@ -849,7 +850,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.from("certificates").select("*").order("order_index")
       if (error) throw new Error(error.message)
       setCertificates(
-        (data || []).map((c) => ({
+        (data || []).map((c: any) => ({
           id: c.id,
           name: c.name,
           description: c.description || "",

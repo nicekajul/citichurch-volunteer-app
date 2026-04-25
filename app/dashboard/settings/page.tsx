@@ -263,7 +263,7 @@ export default function SettingsPage() {
                   <div className="rounded-lg border p-4 space-y-2">
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Username</span>
-                      <span className="text-sm font-medium">{user?.username}</span>
+                      <span className="text-sm font-medium">{user?.email}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Role</span>

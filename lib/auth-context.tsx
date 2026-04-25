@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import type { User as SupabaseUser, AuthChangeEvent, Session } from "@supabase/supabase-js"
 
 export type UserRole = "admin" | "leader" | "volunteer"
 
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Directly resolve the current session — this is the reliable path on refresh.
     // onAuthStateChange's INITIAL_SESSION can be missed in some React Strict Mode
     // or timing edge cases, so getSession() acts as the guaranteed fallback.
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }: { data: { session: Session | null } }) => {
       if (session?.user) {
         const profileData = await fetchProfile(session.user.id)
         if (profileData) {
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for subsequent auth changes (sign in, sign out, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
