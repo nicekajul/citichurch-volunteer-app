@@ -59,7 +59,7 @@ export function Header({ title, subtitle }: HeaderProps) {
               </Badge>
             </div>
             <Avatar className="w-9 h-9">
-              <AvatarImage src={user?.avatar || "/placeholder.svg"} alt={user?.name} />
+              <AvatarImage src={user?.avatar_url || undefined} alt={user?.name} />
               <AvatarFallback className="bg-primary/10 text-primary">{user?.name?.charAt(0)}</AvatarFallback>
             </Avatar>
           </div>

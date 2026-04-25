@@ -39,7 +39,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "leader", "volunteer"] },
   { label: "Team Management", href: "/dashboard/teams", icon: Users, roles: ["admin"] },
   { label: "My Team", href: "/dashboard/my-team", icon: Users, roles: ["leader"] },
-  { label: "Training Videos", href: "/dashboard/training", icon: Video, roles: ["admin", "leader"] },
+  { label: "Training Modules", href: "/dashboard/training", icon: BookOpen, roles: ["admin", "leader"] },
   { label: "My Training", href: "/dashboard/my-training", icon: BookOpen, roles: ["volunteer"] },
   { label: "Volunteers", href: "/dashboard/volunteers", icon: UserCircle, roles: ["admin", "leader"] },
   { label: "Schedule", href: "/dashboard/schedule", icon: Calendar, roles: ["admin", "leader", "volunteer"] },
@@ -67,8 +67,8 @@ export function Sidebar() {
 
   const pendingApplicationsCount = ministryApplications.filter((a) => a.status === "pending").length
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
   }
 
@@ -76,7 +76,7 @@ export function Sidebar() {
     if (!user) return false
     if (!item.roles.includes(user.role)) return false
     // Hide "Apply for Ministry" if the volunteer already belongs to a team
-    if (item.href === "/apply" && user.teamId) return false
+    if (item.href === "/apply" && user.team_id) return false
     return true
   })
 

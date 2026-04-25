@@ -87,7 +87,7 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <div className="relative">
+                <div className="relative" suppressHydrationWarning>
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
@@ -96,6 +96,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     className="h-11 pr-10"
+                    suppressHydrationWarning
                   />
                   <button
                     type="button"

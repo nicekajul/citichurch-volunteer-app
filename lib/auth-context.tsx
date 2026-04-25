@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   // createClient() returns the same singleton so session is shared across providers
   const supabase = createClient()
-  const isFetchingRef = { current: false }
+  const isFetchingRef = useRef(false)
 
   const fetchProfile = async (userId: string): Promise<Profile | null> => {
     try {
@@ -69,17 +69,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Set up auth state listener FIRST before checking session
+    // Directly resolve the current session — this is the reliable path on refresh.
+    // onAuthStateChange's INITIAL_SESSION can be missed in some React Strict Mode
+    // or timing edge cases, so getSession() acts as the guaranteed fallback.
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profileData = await fetchProfile(session.user.id)
+        if (profileData) {
+          setProfile(profileData)
+          setUser({ ...profileData, supabase_user: session.user })
+        }
+      }
+      setIsLoading(false)
+    })
+
+    // Listen for subsequent auth changes (sign in, sign out, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
-        setIsLoading(false)
         return
       }
 
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-        // Guard against concurrent fetches
+      if (event === 'SIGNED_IN' && session?.user) {
         if (isFetchingRef.current) return
         isFetchingRef.current = true
         try {
@@ -90,15 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } finally {
           isFetchingRef.current = false
-          setIsLoading(false)
         }
-        return
       }
-
-      // TOKEN_REFRESHED and other events - don't re-fetch profile
-      if (event === 'TOKEN_REFRESHED') return
-
-      setIsLoading(false)
+      // TOKEN_REFRESHED: session is still valid, no need to re-fetch profile
     })
 
     return () => {
@@ -108,28 +114,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    // Set flag before signInWithPassword so the SIGNED_IN onAuthStateChange
+    // handler skips its duplicate profile fetch — login() owns this flow.
+    isFetchingRef.current = true
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-      if (error) {
-        return { success: false, error: error.message }
-      }
+      if (error) return { success: false, error: error.message }
+      if (!data.session?.user) return { success: false, error: "Session not established" }
 
-      if (data.user) {
-        const profileData = await fetchProfile(data.user.id)
-        if (profileData) {
-          setProfile(profileData)
-          setUser({ ...profileData, supabase_user: data.user })
-          return { success: true }
-        }
-      }
+      const profileData = await fetchProfile(data.session.user.id)
+      if (!profileData) return { success: false, error: "Profile not found" }
 
-      return { success: false, error: "Profile not found" }
+      setProfile(profileData)
+      setUser({ ...profileData, supabase_user: data.session.user })
+      return { success: true }
     } catch (error) {
-      return { success: false, error: "An unexpected error occurred" }
+      return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
+    } finally {
+      isFetchingRef.current = false
     }
   }
 
@@ -163,7 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
+    // 'local' scope clears localStorage immediately without waiting for the
+    // server revocation network call, preventing the logout from hanging.
+    await supabase.auth.signOut({ scope: 'local' })
     setUser(null)
     setProfile(null)
   }

@@ -38,6 +38,18 @@ export interface TrainingVideo {
   passingScore: number
   summary: string
   documents?: TrainingDocument[] // Added documents support
+  certificateId?: string    // which certificate this module belongs to
+  prerequisites?: string[]  // module IDs that must be completed first
+}
+
+export interface Certificate {
+  id: string
+  name: string
+  description: string
+  color: string                         // hex e.g. "#3b82f6"
+  teamId?: string                       // undefined = ministry-wide
+  prerequisiteCertificateId?: string    // must earn this cert first
+  orderIndex: number                    // display/roadmap order
 }
 
 export interface TrainingDocument {
@@ -63,7 +75,7 @@ export interface QuizQuestion {
 
 export interface TrainingProgress {
   id: string
-  oderId: string
+  userId: string
   videoId: string
   completed: boolean
   watchedSeconds: number
@@ -80,14 +92,24 @@ export interface Announcement {
   authorId: string
   teamId?: string
   createdAt: string
-  priority: "low" | "medium" | "high"
+  priority: "low" | "normal" | "high"
+}
+
+export interface ScheduleAssignment {
+  id: string
+  userId: string
+  teamId: string
+  role: string
+  status: "assigned" | "confirmed" | "declined" | "completed"
+  rejectionReason?: string
 }
 
 export interface ServiceSchedule {
   id: string
   date: string
+  time?: string
   service: string
-  assignments: { oderId: string; teamId: string; role: string }[]
+  assignments: ScheduleAssignment[]
 }
 
 export interface MinistryApplication {
@@ -520,7 +542,7 @@ export const initialAnnouncements: Announcement[] = [
     authorId: "2",
     teamId: "sounds",
     createdAt: "2024-03-10T14:30:00Z",
-    priority: "medium",
+    priority: "normal",
   },
   {
     id: "a3",
@@ -536,7 +558,7 @@ export const initialAnnouncements: Announcement[] = [
 export const initialTrainingProgress: TrainingProgress[] = [
   {
     id: "p1",
-    oderId: "3",
+    userId:"3",
     videoId: "v1",
     completed: true,
     watchedSeconds: 120,
@@ -547,7 +569,7 @@ export const initialTrainingProgress: TrainingProgress[] = [
   },
   {
     id: "p2",
-    oderId: "3",
+    userId:"3",
     videoId: "v2",
     completed: true,
     watchedSeconds: 180,
@@ -558,7 +580,7 @@ export const initialTrainingProgress: TrainingProgress[] = [
   },
   {
     id: "p3",
-    oderId: "3",
+    userId:"3",
     videoId: "v3",
     completed: false,
     watchedSeconds: 150,
@@ -567,7 +589,7 @@ export const initialTrainingProgress: TrainingProgress[] = [
   },
   {
     id: "p4",
-    oderId: "4",
+    userId:"4",
     videoId: "v1",
     completed: true,
     watchedSeconds: 120,
@@ -577,14 +599,14 @@ export const initialTrainingProgress: TrainingProgress[] = [
   },
   {
     id: "p5",
-    oderId: "6",
+    userId:"6",
     videoId: "v1",
     completed: false,
     watchedSeconds: 60,
   },
   {
     id: "p6",
-    oderId: "7",
+    userId:"7",
     videoId: "v1",
     completed: true,
     watchedSeconds: 120,
@@ -601,9 +623,9 @@ export const initialServiceSchedules: ServiceSchedule[] = [
     date: "2024-03-24",
     service: "Sunday Morning",
     assignments: [
-      { oderId: "3", teamId: "sounds", role: "Assistant" },
-      { oderId: "4", teamId: "lights", role: "Operator" },
-      { oderId: "7", teamId: "cameras", role: "Camera 1" },
+      { id: "a1", userId: "3", teamId: "sounds", role: "Assistant", status: "assigned" },
+      { id: "a2", userId: "4", teamId: "lights", role: "Operator", status: "assigned" },
+      { id: "a3", userId: "7", teamId: "cameras", role: "Camera 1", status: "assigned" },
     ],
   },
   {
@@ -611,10 +633,10 @@ export const initialServiceSchedules: ServiceSchedule[] = [
     date: "2024-03-31",
     service: "Easter Sunday",
     assignments: [
-      { oderId: "3", teamId: "sounds", role: "Main Mixer" },
-      { oderId: "4", teamId: "lights", role: "Operator" },
-      { oderId: "6", teamId: "broadcast", role: "Stream Operator" },
-      { oderId: "7", teamId: "cameras", role: "Camera 2" },
+      { id: "a4", userId: "3", teamId: "sounds", role: "Main Mixer", status: "assigned" },
+      { id: "a5", userId: "4", teamId: "lights", role: "Operator", status: "assigned" },
+      { id: "a6", userId: "6", teamId: "broadcast", role: "Stream Operator", status: "assigned" },
+      { id: "a7", userId: "7", teamId: "cameras", role: "Camera 2", status: "assigned" },
     ],
   },
 ]

@@ -26,10 +26,10 @@ export default function ProfilePage() {
 
   if (!user) return null
 
-  const team = teams.find((t) => t.id === user.teamId)
+  const team = teams.find((t) => t.id === user.team_id)
 
-  const myProgress = trainingProgress.filter((p) => p.oderId === user.id)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.teamId)
+  const myProgress = trainingProgress.filter((p) => p.userId === user.id)
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
   const completedVideos = myProgress.filter((p) => p.completed)
   const approvedVideos = completedVideos.filter((p) => p.approvedBy)
 
@@ -82,7 +82,7 @@ export default function ProfilePage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center text-center">
                 <Avatar className="h-24 w-24 mb-4">
-                  <AvatarImage src={user.avatar || "/placeholder.svg"} />
+                  <AvatarImage src={user.avatar_url || undefined} />
                   <AvatarFallback className="text-2xl bg-primary/10 text-primary">
                     {user.name
                       .split(" ")
@@ -120,7 +120,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex items-center gap-3 text-sm">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span>Joined {new Date(user.joinDate).toLocaleDateString()}</span>
+                    <span>Joined {new Date(user.join_date).toLocaleDateString()}</span>
                   </div>
                 </div>
               </div>
@@ -218,7 +218,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="username">Username</Label>
-                        <Input id="username" value={user.username} disabled className="bg-muted" />
+                        <Input id="username" value={user.email.split("@")[0]} disabled className="bg-muted" />
                       </div>
                     </div>
                   </CardContent>

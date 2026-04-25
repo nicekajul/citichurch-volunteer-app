@@ -19,6 +19,7 @@ create table if not exists public.teams (
   name text not null,
   description text,
   leader_id uuid references public.profiles(id) on delete set null,
+  icon text,
   color text default '#6B7280',
   created_at timestamptz default now(),
   updated_at timestamptz default now()

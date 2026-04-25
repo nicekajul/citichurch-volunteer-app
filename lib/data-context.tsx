@@ -7,6 +7,7 @@ export {
   type UserRole,
   type User,
   type Team,
+  type Certificate,
   type TrainingVideo,
   type TrainingDocument,
   type Quiz,
@@ -14,4 +15,5 @@ export {
   type TrainingProgress,
   type Announcement,
   type ServiceSchedule,
+  type ScheduleAssignment,
 } from "./supabase-data-context"

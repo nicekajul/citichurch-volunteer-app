@@ -4,14 +4,15 @@ import { useData } from "@/lib/data-context"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/dashboard/header"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Award, Download, Lock, CheckCircle2, Calendar, Church } from "lucide-react"
+import { Award, Lock, CheckCircle2, Church, ChevronRight, BookOpen } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { CertificateBadge } from "@/components/dashboard/certificate-badge"
+import { Progress } from "@/components/ui/progress"
 
 export default function CertificatesPage() {
   const { user } = useAuth()
-  const { teams, trainingVideos, trainingProgress } = useData()
+  const { certificates, trainingVideos, trainingProgress, getEarnedCertificates, isCertificateLocked } = useData()
   const router = useRouter()
 
   if (user?.role !== "volunteer") {
@@ -19,52 +20,30 @@ export default function CertificatesPage() {
     return null
   }
 
-  const myTeam = teams.find((t) => t.id === user.teamId)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.teamId)
-  const myProgress = trainingProgress.filter((p) => p.oderId === user.id)
-  const completedVideos = myProgress.filter((p) => p.completed)
-  const approvedVideos = completedVideos.filter((p) => p.approvedBy)
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
+  const myProgress = trainingProgress.filter((p) => p.userId === user.id)
+  const earnedCertificates = getEarnedCertificates(user.id)
+  const earnedIds = new Set(earnedCertificates.map((c) => c.id))
 
-  // Define certificates
-  const certificates = [
-    {
-      id: "general",
-      title: "Production Ministry Foundation",
-      description: "Completed general safety and introduction training",
-      requiredVideos: relevantVideos.filter((v) => !v.teamId && v.order <= 2).map((v) => v.id),
-      color: "#d4a843",
-    },
-    {
-      id: "team",
-      title: `${myTeam?.name || "Team"} Specialist`,
-      description: `Completed all ${myTeam?.name || "team"}-specific training`,
-      requiredVideos: relevantVideos.filter((v) => v.teamId === user.teamId).map((v) => v.id),
-      color: myTeam?.color || "#3b82f6",
-    },
-    {
-      id: "complete",
-      title: "Production Ministry Expert",
-      description: "Completed all available training modules",
-      requiredVideos: relevantVideos.map((v) => v.id),
-      color: "#10b981",
-    },
-  ]
+  // Only show certs that have modules relevant to this volunteer
+  const relevantCerts = certificates
+    .filter((cert) => {
+      if (cert.teamId && cert.teamId !== user.team_id) return false
+      return relevantVideos.some((v) => v.certificateId === cert.id)
+    })
+    .sort((a, b) => a.orderIndex - b.orderIndex)
 
-  const getCertificateStatus = (cert: (typeof certificates)[0]) => {
-    const completedRequired = cert.requiredVideos.filter((videoId) => approvedVideos.some((p) => p.videoId === videoId))
-
-    return {
-      completed: completedRequired.length,
-      total: cert.requiredVideos.length,
-      earned: completedRequired.length === cert.requiredVideos.length && cert.requiredVideos.length > 0,
-      percentage:
-        cert.requiredVideos.length > 0 ? Math.round((completedRequired.length / cert.requiredVideos.length) * 100) : 0,
-    }
+  const getCertProgress = (certId: string) => {
+    const modules = relevantVideos.filter((v) => v.certificateId === certId)
+    const completed = modules.filter((v) => myProgress.some((p) => p.videoId === v.id && p.completed)).length
+    return { modules, completed, pct: modules.length > 0 ? Math.round((completed / modules.length) * 100) : 0 }
   }
+
+  const hasAnyCerts = relevantCerts.length > 0
 
   return (
     <div className="min-h-screen">
-      <Header title="My Certificates" subtitle="Track your achievements" />
+      <Header title="My Certificates" subtitle="Track your training achievements" />
 
       <div className="p-4 lg:p-6 space-y-6">
         {/* Overview */}
@@ -77,131 +56,175 @@ export default function CertificatesPage() {
               <div>
                 <h3 className="text-lg font-semibold">Your Achievements</h3>
                 <p className="text-muted-foreground">
-                  {certificates.filter((c) => getCertificateStatus(c).earned).length} of {certificates.length}{" "}
-                  certificates earned
+                  {earnedCertificates.length} of {relevantCerts.length} certificates earned
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Certificates Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {certificates.map((cert) => {
-            const status = getCertificateStatus(cert)
-
-            return (
-              <Card key={cert.id} className={`border-border/50 overflow-hidden ${!status.earned ? "opacity-75" : ""}`}>
-                {/* Certificate Header */}
-                <div
-                  className="h-32 flex items-center justify-center relative"
-                  style={{ backgroundColor: `${cert.color}15` }}
-                >
-                  {status.earned ? (
-                    <>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div
-                          className="w-24 h-24 rounded-full border-4 flex items-center justify-center"
-                          style={{ borderColor: cert.color }}
-                        >
-                          <Church className="w-10 h-10" style={{ color: cert.color }} />
-                        </div>
-                      </div>
-                      <Badge className="absolute top-3 right-3" style={{ backgroundColor: cert.color, color: "white" }}>
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Earned
-                      </Badge>
-                    </>
-                  ) : (
-                    <div className="text-center">
-                      <Lock className="w-12 h-12 mx-auto text-muted-foreground/50 mb-2" />
-                      <p className="text-sm text-muted-foreground">{status.percentage}% complete</p>
-                    </div>
-                  )}
-                </div>
-
-                <CardContent className="p-4 space-y-4">
-                  <div>
-                    <h3 className="font-semibold">{cert.title}</h3>
-                    <p className="text-sm text-muted-foreground">{cert.description}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span className="font-medium">
-                        {status.completed}/{status.total} videos
-                      </span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full transition-all"
-                        style={{
-                          width: `${status.percentage}%`,
-                          backgroundColor: cert.color,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {status.earned && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="w-4 h-4" />
-                      Earned on {new Date().toLocaleDateString()}
-                    </div>
-                  )}
-
-                  <Button
-                    variant={status.earned ? "default" : "outline"}
-                    className="w-full"
-                    disabled={!status.earned}
-                    style={status.earned ? { backgroundColor: cert.color } : {}}
-                  >
-                    {status.earned ? (
-                      <>
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Certificate
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-4 h-4 mr-2" />
-                        Complete Training to Unlock
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-
-        {/* Certificate Preview */}
-        {certificates.some((c) => getCertificateStatus(c).earned) && (
+        {/* Roadmap */}
+        {relevantCerts.length > 1 && (
           <Card className="border-border/50">
-            <CardContent className="p-8">
-              <div className="max-w-2xl mx-auto text-center border-4 border-primary/20 rounded-lg p-8">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Church className="w-10 h-10 text-primary" />
-                </div>
-                <p className="text-sm text-muted-foreground mb-2">CERTIFICATE OF COMPLETION</p>
-                <h2 className="text-3xl font-bold mb-2">Citichurch</h2>
-                <p className="text-lg text-muted-foreground mb-6">Production Ministry</p>
-                <p className="text-muted-foreground mb-4">This is to certify that</p>
-                <h3 className="text-2xl font-semibold text-primary mb-4">{user.name}</h3>
-                <p className="text-muted-foreground mb-6">
-                  has successfully completed the Production Ministry Foundation training program
-                </p>
-                <div className="flex justify-center gap-8 pt-6 border-t border-border">
-                  <div className="text-center">
-                    <div className="w-24 h-0.5 bg-muted-foreground/30 mb-2" />
-                    <p className="text-xs text-muted-foreground">Date</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-24 h-0.5 bg-muted-foreground/30 mb-2" />
-                    <p className="text-xs text-muted-foreground">Team Leader</p>
-                  </div>
-                </div>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Award className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm">Training Roadmap</h3>
               </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {relevantCerts.map((cert, idx) => {
+                  const isEarned = earnedIds.has(cert.id)
+                  const certLocked = isCertificateLocked(cert.id, user.id)
+                  return (
+                    <span key={cert.id} className="flex items-center gap-1">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                          isEarned
+                            ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400"
+                            : certLocked
+                            ? "border-border/40 bg-muted/50 text-muted-foreground"
+                            : "border-primary/30 bg-primary/5 text-primary"
+                        }`}
+                      >
+                        {isEarned ? (
+                          <CheckCircle2 className="w-3 h-3" />
+                        ) : certLocked ? (
+                          <Lock className="w-3 h-3" />
+                        ) : (
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cert.color }} />
+                        )}
+                        {cert.name}
+                      </span>
+                      {idx < relevantCerts.length - 1 && (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
+                      )}
+                    </span>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Certificates Grid */}
+        {hasAnyCerts ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {relevantCerts.map((cert) => {
+              const isEarned = earnedIds.has(cert.id)
+              const certLocked = isCertificateLocked(cert.id, user.id)
+              const prereqCert = cert.prerequisiteCertificateId
+                ? certificates.find((c) => c.id === cert.prerequisiteCertificateId)
+                : undefined
+              const { modules, completed, pct } = getCertProgress(cert.id)
+
+              return (
+                <Card
+                  key={cert.id}
+                  className={`border-border/50 overflow-hidden ${certLocked ? "opacity-70" : ""}`}
+                >
+                  {/* Certificate Header */}
+                  <div
+                    className="h-32 flex items-center justify-center relative"
+                    style={{ backgroundColor: `${certLocked ? "#94a3b8" : cert.color}15` }}
+                  >
+                    {isEarned ? (
+                      <>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="w-24 h-24 rounded-full border-4 flex items-center justify-center"
+                            style={{ borderColor: cert.color }}
+                          >
+                            <Church className="w-10 h-10" style={{ color: cert.color }} />
+                          </div>
+                        </div>
+                        <span
+                          className="absolute top-3 right-3 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: cert.color }}
+                        >
+                          <CheckCircle2 className="w-3 h-3" /> Earned
+                        </span>
+                      </>
+                    ) : certLocked ? (
+                      <div className="text-center px-4">
+                        <Lock className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+                        <p className="text-xs text-muted-foreground">
+                          Complete <span className="font-medium">{prereqCert?.name ?? "prerequisite"}</span> first
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <div
+                          className="w-16 h-16 mx-auto rounded-full border-4 border-dashed flex items-center justify-center mb-1"
+                          style={{ borderColor: `${cert.color}60` }}
+                        >
+                          <Award className="w-7 h-7" style={{ color: `${cert.color}80` }} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{pct}% complete</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <CardContent className="p-4 space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h3 className="font-semibold">{cert.name}</h3>
+                        {isEarned && <CertificateBadge certificate={cert} size="sm" />}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{cert.description}</p>
+                      {certLocked && prereqCert && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Requires: {prereqCert.name}
+                        </p>
+                      )}
+                    </div>
+
+                    {!certLocked && (
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Progress</span>
+                          <span className="font-medium">{completed}/{modules.length} modules</span>
+                        </div>
+                        <Progress value={pct} className="h-2" />
+                      </div>
+                    )}
+
+                    <Button
+                      variant={isEarned ? "default" : "outline"}
+                      className="w-full"
+                      disabled={certLocked || !isEarned}
+                      style={isEarned ? { backgroundColor: cert.color, borderColor: cert.color } : {}}
+                      onClick={() => isEarned && router.push("/dashboard/my-training")}
+                    >
+                      {isEarned ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          Certificate Earned
+                        </>
+                      ) : certLocked ? (
+                        <>
+                          <Lock className="w-4 h-4 mr-2" />
+                          Locked
+                        </>
+                      ) : (
+                        <>
+                          <Award className="w-4 h-4 mr-2" />
+                          {pct > 0 ? "Continue Training" : "Start Training"}
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
+          <Card className="border-border/50 border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <BookOpen className="w-12 h-12 text-muted-foreground/40 mb-4" />
+              <h3 className="font-semibold text-lg mb-1">No certificates yet</h3>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                Your admin hasn&apos;t set up any certificates yet. Check back soon.
+              </p>
             </CardContent>
           </Card>
         )}

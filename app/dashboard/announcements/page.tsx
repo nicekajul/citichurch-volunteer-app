@@ -29,9 +29,10 @@ export default function AnnouncementsPage() {
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: "",
     content: "",
-    priority: "low" as "low" | "medium" | "high",
+    priority: "low" as "low" | "normal" | "high",
     teamId: "",
   })
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const canCreate = user?.role === "admin" || user?.role === "leader"
 
@@ -39,31 +40,35 @@ export default function AnnouncementsPage() {
     .filter((a) => {
       if (user?.role === "admin") return true
       if (!a.teamId) return true // General announcements visible to all
-      if (user?.role === "leader" && a.teamId === user.teamId) return true
-      if (user?.role === "volunteer" && a.teamId === user.teamId) return true
+      if (user?.role === "leader" && a.teamId === user.team_id) return true
+      if (user?.role === "volunteer" && a.teamId === user.team_id) return true
       return false
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newAnnouncement.title || !newAnnouncement.content || !user) return
-
-    addAnnouncement({
-      title: newAnnouncement.title,
-      content: newAnnouncement.content,
-      priority: newAnnouncement.priority,
-      authorId: user.id,
-      teamId: user.role === "leader" ? user.teamId : newAnnouncement.teamId || undefined,
-    })
-    setNewAnnouncement({ title: "", content: "", priority: "low", teamId: "" })
-    setIsOpen(false)
+    setCreateError(null)
+    try {
+      await addAnnouncement({
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        priority: newAnnouncement.priority,
+        authorId: user.id,
+        teamId: user.role === "leader" ? (user.team_id ?? undefined) : (newAnnouncement.teamId && newAnnouncement.teamId !== "all") ? newAnnouncement.teamId : undefined,
+      })
+      setNewAnnouncement({ title: "", content: "", priority: "low", teamId: "" })
+      setIsOpen(false)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create announcement. Please try again.")
+    }
   }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high":
         return "bg-red-500/10 text-red-600 border-red-200"
-      case "medium":
+      case "normal":
         return "bg-amber-500/10 text-amber-600 border-amber-200"
       default:
         return "bg-blue-500/10 text-blue-600 border-blue-200"
@@ -125,7 +130,7 @@ export default function AnnouncementsPage() {
                       <Label>Priority</Label>
                       <Select
                         value={newAnnouncement.priority}
-                        onValueChange={(value: "low" | "medium" | "high") =>
+                        onValueChange={(value: "low" | "normal" | "high") =>
                           setNewAnnouncement({ ...newAnnouncement, priority: value })
                         }
                       >
@@ -134,7 +139,7 @@ export default function AnnouncementsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="normal">Normal</SelectItem>
                           <SelectItem value="high">High</SelectItem>
                         </SelectContent>
                       </Select>
@@ -163,7 +168,10 @@ export default function AnnouncementsPage() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsOpen(false)}>
+                  {createError && (
+                    <p className="text-sm text-destructive mr-auto">{createError}</p>
+                  )}
+                  <Button variant="outline" onClick={() => { setIsOpen(false); setCreateError(null) }}>
                     Cancel
                   </Button>
                   <Button onClick={handleCreate} disabled={!newAnnouncement.title || !newAnnouncement.content}>

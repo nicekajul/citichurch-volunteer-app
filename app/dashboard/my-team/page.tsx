@@ -18,13 +18,14 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User } from "lucide-react"
+import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User, Award } from "lucide-react"
+import { CertificateBadge } from "@/components/dashboard/certificate-badge"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 
 export default function MyTeamPage() {
   const { user } = useAuth()
-  const { users, teams, trainingVideos, trainingProgress, approveProgress, addAnnouncement } = useData()
+  const { users, teams, trainingVideos, trainingProgress, approveProgress, addAnnouncement, certificates, getEarnedCertificates } = useData()
   const router = useRouter()
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -37,9 +38,9 @@ export default function MyTeamPage() {
     return null
   }
 
-  const myTeam = teams.find((t) => t.id === user.teamId)
-  const teamMembers = users.filter((u) => u.teamId === user.teamId && u.role === "volunteer")
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.teamId)
+  const myTeam = teams.find((t) => t.id === user.team_id)
+  const teamMembers = users.filter((u) => u.teamId === user.team_id && u.role === "volunteer")
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
 
   const filteredMembers = teamMembers.filter(
     (m) =>
@@ -48,7 +49,7 @@ export default function MyTeamPage() {
   )
 
   const getMemberProgress = (memberId: string) => {
-    const memberProg = trainingProgress.filter((p) => p.oderId === memberId)
+    const memberProg = trainingProgress.filter((p) => p.userId === memberId)
     const completed = memberProg.filter((p) => p.completed).length
     return {
       completed,
@@ -59,7 +60,7 @@ export default function MyTeamPage() {
   }
 
   const getPendingApprovals = (memberId: string) => {
-    return trainingProgress.filter((p) => p.oderId === memberId && p.completed && !p.approvedBy)
+    return trainingProgress.filter((p) => p.userId === memberId && p.completed && !p.approvedBy)
   }
 
   const handleApprove = (progressId: string) => {
@@ -71,8 +72,8 @@ export default function MyTeamPage() {
       title: message.title,
       content: message.content,
       authorId: user.id,
-      teamId: user.teamId,
-      priority: "medium",
+      teamId: user.team_id || undefined,
+      priority: "normal",
     })
     setMessage({ title: "", content: "" })
     setIsMessageOpen(false)
@@ -115,7 +116,7 @@ export default function MyTeamPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <Avatar className="w-12 h-12">
-                      <AvatarImage src={member.avatar || "/placeholder.svg"} />
+                      <AvatarImage src={member.avatar} />
                       <AvatarFallback className="bg-primary/10 text-primary">{member.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
@@ -126,6 +127,11 @@ export default function MyTeamPage() {
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{member.email}</p>
+                      {(() => {
+                        const earned = getEarnedCertificates(member.id)
+                        if (!earned.length) return null
+                        return <div className="flex flex-wrap gap-1 mt-1">{earned.map((cert) => <CertificateBadge key={cert.id} certificate={cert} />)}</div>
+                      })()}
                     </div>
                   </div>
 
@@ -202,7 +208,7 @@ export default function MyTeamPage() {
                 {/* Member Info */}
                 <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50 mb-6">
                   <Avatar className="w-16 h-16">
-                    <AvatarImage src={selectedMemberData.avatar || "/placeholder.svg"} />
+                    <AvatarImage src={selectedMemberData.avatar} />
                     <AvatarFallback className="text-lg bg-primary/10 text-primary">
                       {selectedMemberData.name.charAt(0)}
                     </AvatarFallback>

@@ -29,7 +29,7 @@ export default function TeamLeaderDashboard() {
   const router = useRouter()
 
   // Don't redirect if still loading or if user is a leader
-  if (!user || (user.role !== "leader" && user.role !== "team_leader")) {
+  if (!user || user.role !== "leader") {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -41,7 +41,7 @@ export default function TeamLeaderDashboard() {
   }
 
   const myTeam = teams.find((t) => t.id === user.team_id)
-  const teamMembers = users.filter((u) => u.team_id === user.team_id && u.role === "volunteer")
+  const teamMembers = users.filter((u) => u.teamId === user.team_id && u.role === "volunteer")
   const activeMembers = teamMembers.filter((m) => m.status === "active")
   const pendingMembers = teamMembers.filter((m) => m.status === "pending")
 
@@ -50,7 +50,7 @@ export default function TeamLeaderDashboard() {
 
   // Calculate team progress
   const teamProgressData = teamMembers.map((member) => {
-    const memberProgress = trainingProgress.filter((p) => p.oderId === member.id)
+    const memberProgress = trainingProgress.filter((p) => p.userId === member.id)
     const completed = memberProgress.filter((p) => p.completed).length
     return {
       member,
@@ -96,7 +96,7 @@ export default function TeamLeaderDashboard() {
             icon={TrendingUp}
           />
           <StatsCard
-            title="Training Videos"
+            title="Training Modules"
             value={relevantVideos.length}
             change={`${relevantVideos.filter((v) => v.quizEnabled).length} with quizzes`}
             changeType="neutral"
@@ -131,7 +131,7 @@ export default function TeamLeaderDashboard() {
                 {teamProgressData.slice(0, 5).map(({ member, completed, total, percentage, pendingApprovals }) => (
                   <div key={member.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={member.avatar || "/placeholder.svg"} />
+                      <AvatarImage src={member.avatar} />
                       <AvatarFallback className="bg-primary/10 text-primary">{member.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
@@ -200,7 +200,7 @@ export default function TeamLeaderDashboard() {
                         >
                           <div className="flex items-center gap-2">
                             <Avatar className="w-7 h-7">
-                              <AvatarImage src={member.avatar || "/placeholder.svg"} />
+                              <AvatarImage src={member.avatar} />
                               <AvatarFallback className="text-xs">{member.name.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div>
@@ -232,7 +232,7 @@ export default function TeamLeaderDashboard() {
                 <Link href="/dashboard/training" className="block">
                   <Button variant="outline" className="w-full justify-start bg-transparent">
                     <Video className="w-4 h-4 mr-2" />
-                    Manage Training Videos
+                    Manage Training Modules
                   </Button>
                 </Link>
                 <Link href="/dashboard/announcements" className="block">
@@ -277,7 +277,7 @@ export default function TeamLeaderDashboard() {
                         className={
                           announcement.priority === "high"
                             ? "bg-red-500/10 text-red-600"
-                            : announcement.priority === "medium"
+                            : announcement.priority === "normal"
                               ? "bg-amber-500/10 text-amber-600"
                               : "bg-blue-500/10 text-blue-600"
                         }
@@ -308,7 +308,7 @@ export default function TeamLeaderDashboard() {
               <div className="space-y-3">
                 {relevantVideos.slice(0, 4).map((video) => {
                   const teamCompleted = teamMembers.filter((m) =>
-                    trainingProgress.some((p) => p.oderId === m.id && p.videoId === video.id && p.completed),
+                    trainingProgress.some((p) => p.userId === m.id && p.videoId === video.id && p.completed),
                   ).length
 
                   return (

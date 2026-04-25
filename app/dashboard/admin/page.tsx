@@ -40,7 +40,7 @@ const teamIcons: Record<string, React.ElementType> = {
 export default function AdminDashboard() {
   const { users, teams, trainingVideos, trainingProgress, announcements, ministryApplications } = useData()
 
-  const volunteers = users.filter((u) => u.role === "volunteer")
+  const volunteers = users.filter((u) => u.role === "volunteer" || u.role === "leader")
   const activeVolunteers = volunteers.filter((u) => u.status === "active")
   const pendingVolunteers = volunteers.filter((u) => u.status === "pending")
 
@@ -52,23 +52,26 @@ export default function AdminDashboard() {
   const getTeamProgress = (teamId: string) => {
     const teamMembers = users.filter((u) => u.teamId === teamId)
     const memberIds = teamMembers.map((m) => m.id)
-    const teamProgress = trainingProgress.filter((p) => memberIds.includes(p.oderId))
+    const teamProgress = trainingProgress.filter((p) => memberIds.includes(p.userId))
     const completed = teamProgress.filter((p) => p.completed).length
     return teamProgress.length > 0 ? Math.round((completed / teamProgress.length) * 100) : 0
   }
 
+  // Recent activity uses the last few known users as proxies until real activity logging is built.
+  // Safe-index prevents crashes when fewer users exist in the database.
+  const safeUser = (idx: number) => users[idx] ?? null
   const recentActivity = [
-    { user: users[2], action: "completed", item: "Safety & Equipment Basics", time: "2 hours ago", status: "success" },
-    { user: users[3], action: "started", item: "Lighting Console Operation", time: "5 hours ago", status: "info" },
-    { user: users[5], action: "joined", item: "Broadcast Team", time: "1 day ago", status: "warning" },
+    { user: safeUser(2), action: "completed", item: "Safety & Equipment Basics", time: "2 hours ago", status: "success" },
+    { user: safeUser(3), action: "started", item: "Lighting Console Operation", time: "5 hours ago", status: "info" },
+    { user: safeUser(5), action: "joined", item: "Broadcast Team", time: "1 day ago", status: "warning" },
     {
-      user: users[6],
+      user: safeUser(6),
       action: "passed quiz",
       item: "Welcome to Production Ministry",
       time: "2 days ago",
       status: "success",
     },
-  ]
+  ].filter((a) => a.user !== null)
 
   return (
     <div className="min-h-screen">
@@ -85,7 +88,7 @@ export default function AdminDashboard() {
             icon={Users}
           />
           <StatsCard
-            title="Training Videos"
+            title="Training Modules"
             value={trainingVideos.length}
             change={`${trainingVideos.filter((v) => v.quizEnabled).length} with quizzes`}
             changeType="neutral"
@@ -165,7 +168,7 @@ export default function AdminDashboard() {
                 {recentActivity.map((activity, idx) => (
                   <div key={idx} className="flex items-start gap-3">
                     <Avatar className="w-8 h-8">
-                      <AvatarImage src={activity.user?.avatar || "/placeholder.svg"} />
+                      <AvatarImage src={activity.user?.avatar} />
                       <AvatarFallback className="text-xs bg-primary/10 text-primary">
                         {activity.user?.name?.charAt(0)}
                       </AvatarFallback>
@@ -264,7 +267,7 @@ export default function AdminDashboard() {
                       <div key={volunteer.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10">
-                            <AvatarImage src={volunteer.avatar || "/placeholder.svg"} />
+                            <AvatarImage src={volunteer.avatar} />
                             <AvatarFallback className="bg-primary/10 text-primary">
                               {volunteer.name.charAt(0)}
                             </AvatarFallback>
@@ -301,7 +304,7 @@ export default function AdminDashboard() {
                         className={
                           announcement.priority === "high"
                             ? "bg-red-500/10 text-red-600"
-                            : announcement.priority === "medium"
+                            : announcement.priority === "normal"
                               ? "bg-amber-500/10 text-amber-600"
                               : "bg-blue-500/10 text-blue-600"
                         }

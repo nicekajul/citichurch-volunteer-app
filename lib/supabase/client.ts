@@ -13,9 +13,11 @@ export function createClient() {
   if (client && clientUrl === url && url) return client
 
   if (!url || !key) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables."
-    )
+    const errorMsg = `Missing Supabase config:
+    - URL: ${url ? 'set' : 'NOT SET'}
+    - ANON_KEY: ${key ? 'set' : 'NOT SET'}`
+    console.error(errorMsg)
+    throw new Error(errorMsg)
   }
 
   client = createBrowserClient(url, key)

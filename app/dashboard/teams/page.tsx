@@ -84,7 +84,7 @@ export default function TeamsPage() {
   const getTeamProgress = (teamId: string) => {
     const members = getTeamMembers(teamId)
     const memberIds = members.map((m) => m.id)
-    const teamProg = trainingProgress.filter((p) => memberIds.includes(p.oderId))
+    const teamProg = trainingProgress.filter((p) => memberIds.includes(p.userId))
     const completed = teamProg.filter((p) => p.completed).length
     return teamProg.length > 0 ? Math.round((completed / teamProg.length) * 100) : 0
   }
@@ -275,7 +275,7 @@ export default function TeamsPage() {
                       {leader && (
                         <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
                           <Avatar className="w-6 h-6">
-                            <AvatarImage src={leader.avatar || "/placeholder.svg"} />
+                            <AvatarImage src={leader.avatar || undefined} />
                             <AvatarFallback className="text-xs">{leader.name.charAt(0)}</AvatarFallback>
                           </Avatar>
                           <span className="text-xs">
@@ -308,7 +308,7 @@ export default function TeamsPage() {
                         <div className="flex -space-x-2">
                           {members.slice(0, 4).map((member) => (
                             <Avatar key={member.id} className="w-7 h-7 border-2 border-background">
-                              <AvatarImage src={member.avatar || "/placeholder.svg"} />
+                              <AvatarImage src={member.avatar || undefined} />
                               <AvatarFallback className="text-xs bg-primary/10 text-primary">
                                 {member.name.charAt(0)}
                               </AvatarFallback>
@@ -407,7 +407,7 @@ export default function TeamsPage() {
             <div className="space-y-4 py-4 max-h-96 overflow-y-auto">
               {selectedTeam &&
                 getTeamMembers(selectedTeam).map((member) => {
-                  const memberProgress = trainingProgress.filter((p) => p.oderId === member.id)
+                  const memberProgress = trainingProgress.filter((p) => p.userId === member.id)
                   const completed = memberProgress.filter((p) => p.completed).length
                   const progressPercent =
                     memberProgress.length > 0 ? Math.round((completed / memberProgress.length) * 100) : 0
@@ -416,7 +416,7 @@ export default function TeamsPage() {
                     <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div className="flex items-center gap-3">
                         <Avatar className="w-10 h-10">
-                          <AvatarImage src={member.avatar || "/placeholder.svg"} />
+                          <AvatarImage src={member.avatar || undefined} />
                           <AvatarFallback className="bg-primary/10 text-primary">
                             {member.name.charAt(0)}
                           </AvatarFallback>
@@ -488,7 +488,7 @@ export default function TeamsPage() {
                   <div key={user.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="flex items-center gap-3">
                       <Avatar className="w-10 h-10">
-                        <AvatarImage src={user.avatar || "/placeholder.svg"} />
+                        <AvatarImage src={user.avatar || undefined} />
                         <AvatarFallback className="bg-primary/10 text-primary">{user.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>

@@ -23,12 +23,13 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Search, Calendar, CheckCircle, Clock, UserCheck, MoreVertical, Eye } from "lucide-react"
+import { CertificateBadge } from "@/components/dashboard/certificate-badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 
 export default function VolunteersPage() {
   const { user } = useAuth()
-  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, approveProgress } = useData()
+  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, approveProgress, certificates, getEarnedCertificates } = useData()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterTeam, setFilterTeam] = useState<string>("all")
@@ -49,7 +50,7 @@ export default function VolunteersPage() {
   let volunteers = users.filter((u) => u.role === "volunteer")
 
   if (user?.role === "leader") {
-    volunteers = volunteers.filter((v) => v.teamId === user.teamId)
+    volunteers = volunteers.filter((v) => v.teamId === user.team_id)
   }
 
   const filteredVolunteers = volunteers.filter((v) => {
@@ -62,7 +63,7 @@ export default function VolunteersPage() {
   })
 
   const getVolunteerProgress = (volunteerId: string) => {
-    const progress = trainingProgress.filter((p) => p.oderId === volunteerId)
+    const progress = trainingProgress.filter((p) => p.userId === volunteerId)
     const completed = progress.filter((p) => p.completed).length
     const total = trainingVideos.filter(
       (v) => !v.teamId || v.teamId === users.find((u) => u.id === volunteerId)?.teamId,
@@ -71,7 +72,7 @@ export default function VolunteersPage() {
   }
 
   const getPendingApprovals = (volunteerId: string) => {
-    return trainingProgress.filter((p) => p.oderId === volunteerId && p.completed && !p.approvedBy)
+    return trainingProgress.filter((p) => p.userId === volunteerId && p.completed && !p.approvedBy)
   }
 
   const handleAddVolunteer = () => {
@@ -146,7 +147,7 @@ export default function VolunteersPage() {
                   <p className="text-2xl font-bold">
                     {
                       trainingProgress.filter(
-                        (p) => p.completed && !p.approvedBy && filteredVolunteers.some((v) => v.id === p.oderId),
+                        (p) => p.completed && !p.approvedBy && filteredVolunteers.some((v) => v.id === p.userId),
                       ).length
                     }
                   </p>
@@ -330,7 +331,7 @@ export default function VolunteersPage() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10">
-                            <AvatarImage src={volunteer.avatar || "/placeholder.svg"} />
+                            <AvatarImage src={volunteer.avatar || undefined} />
                             <AvatarFallback className="bg-primary/10 text-primary">
                               {volunteer.name.charAt(0)}
                             </AvatarFallback>
@@ -338,6 +339,15 @@ export default function VolunteersPage() {
                           <div>
                             <p className="font-medium">{volunteer.name}</p>
                             <p className="text-xs text-muted-foreground">{volunteer.email}</p>
+                            {(() => {
+                              const earned = getEarnedCertificates(volunteer.id)
+                              if (!earned.length) return null
+                              return (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {earned.map((cert) => <CertificateBadge key={cert.id} certificate={cert} />)}
+                                </div>
+                              )
+                            })()}
                           </div>
                         </div>
                       </TableCell>

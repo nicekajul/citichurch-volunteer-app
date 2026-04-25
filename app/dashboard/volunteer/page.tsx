@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useData } from "@/lib/data-context"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/dashboard/header"
@@ -8,6 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Video,
   Award,
@@ -20,27 +31,33 @@ import {
   Lock,
   FileQuestion,
   Sparkles,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export default function VolunteerDashboard() {
   const { user } = useAuth()
-  const { teams, trainingVideos, trainingProgress, announcements, serviceSchedules, ministryApplications } = useData()
+  const { teams, trainingVideos, trainingProgress, announcements, serviceSchedules, ministryApplications, respondToSchedule, getEarnedCertificates } = useData()
   const router = useRouter()
+
+  const [declineScheduleId, setDeclineScheduleId] = useState<string | null>(null)
+  const [declineReason, setDeclineReason] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (user?.role !== "volunteer") {
     router.push("/dashboard")
     return null
   }
 
-  const myTeam = teams.find((t) => t.id === user.teamId)
+  const myTeam = teams.find((t) => t.id === user.team_id)
 
   // Get relevant training videos (general + team-specific)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.teamId)
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
 
   // Get user's progress
-  const myProgress = trainingProgress.filter((p) => p.oderId === user.id)
+  const myProgress = trainingProgress.filter((p) => p.userId === user.id)
   const completedVideos = myProgress.filter((p) => p.completed)
   const approvedVideos = completedVideos.filter((p) => p.approvedBy)
 
@@ -60,18 +77,30 @@ export default function VolunteerDashboard() {
 
   const nextVideo = getNextVideo()
 
-  // Get upcoming schedules
-  const mySchedules = serviceSchedules.filter((s) => s.assignments.some((a) => a.oderId === user.id)).slice(0, 3)
+  // Get upcoming schedules (filter out past dates)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const mySchedules = serviceSchedules
+    .filter((s) => {
+      if (!s.assignments.some((a) => a.userId === user.id)) return false
+      
+      // Parse the schedule date and normalize it to midnight local time for fair comparison
+      const scheduleDate = new Date(s.date)
+      // If the date string is YYYY-MM-DD, parsing it might result in UTC midnight.
+      // We adjust for timezone offset if needed, or simply compare year/month/date
+      const [year, month, day] = s.date.split("-").map(Number)
+      const localScheduleDate = new Date(year, month - 1, day)
+      
+      return localScheduleDate >= today
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 3)
 
   // Get relevant announcements
-  const myAnnouncements = announcements.filter((a) => !a.teamId || a.teamId === user.teamId).slice(0, 3)
+  const myAnnouncements = announcements.filter((a) => !a.teamId || a.teamId === user.team_id).slice(0, 3)
 
-  // Calculate certificates earned (completed all required + approved)
-  const requiredVideos = relevantVideos.filter((v) => v.order <= 2)
-  const completedRequired = requiredVideos.filter((v) =>
-    completedVideos.some((p) => p.videoId === v.id && p.approvedBy),
-  )
-  const certificatesEarned = completedRequired.length === requiredVideos.length ? 1 : 0
+  const certificatesEarned = getEarnedCertificates(user.id).length
 
   // Determine next steps
   const getNextSteps = () => {
@@ -109,6 +138,39 @@ export default function VolunteerDashboard() {
   }
 
   const nextSteps = getNextSteps()
+
+  const handleAccept = async (scheduleId: string) => {
+    try {
+      await respondToSchedule(scheduleId, "confirmed")
+    } catch (e) {
+      console.error("Failed to confirm schedule", e)
+    }
+  }
+
+  const handleDeclineSubmit = async () => {
+    if (!declineScheduleId) return
+    setIsSubmitting(true)
+    try {
+      await respondToSchedule(declineScheduleId, "declined", declineReason)
+      setDeclineScheduleId(null)
+      setDeclineReason("")
+    } catch (e) {
+      console.error("Failed to decline schedule", e)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return <Badge className="text-xs bg-green-500/10 text-green-600 border-green-200">Confirmed</Badge>
+      case "declined":
+        return <Badge className="text-xs bg-red-500/10 text-red-600 border-red-200">Declined</Badge>
+      default:
+        return <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Pending Response</Badge>
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -153,7 +215,7 @@ export default function VolunteerDashboard() {
         {/* Ministry Application Status */}
         {(() => {
           const myApp = ministryApplications.find((a) => a.applicantId === user.id)
-          if (!myApp && !user.teamId) {
+          if (!myApp && !user.team_id) {
             return (
               <Card className="border-dashed border-primary/40 bg-primary/5">
                 <CardContent className="p-5">
@@ -368,6 +430,7 @@ export default function VolunteerDashboard() {
             <Card className="border-border/50">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Upcoming Services</CardTitle>
+                <CardDescription>Confirm or decline your assignments</CardDescription>
               </CardHeader>
               <CardContent>
                 {mySchedules.length === 0 ? (
@@ -376,23 +439,51 @@ export default function VolunteerDashboard() {
                     <p className="text-sm">No upcoming services</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {mySchedules.map((schedule) => {
-                      const myAssignment = schedule.assignments.find((a) => a.oderId === user.id)
+                      const myAssignment = schedule.assignments.find((a) => a.userId === user.id)
+                      const [year, month, day] = schedule.date.split("-").map(Number)
+                      const dateStr = new Date(year, month - 1, day).toLocaleDateString("en-US", {
+                        weekday: "short", month: "short", day: "numeric",
+                      })
+                      const isPending = !myAssignment?.status || myAssignment.status === "assigned"
                       return (
-                        <div key={schedule.id} className="p-3 rounded-lg bg-muted/50">
-                          <p className="font-medium text-sm">{schedule.service}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(schedule.date).toLocaleDateString("en-US", {
-                                weekday: "short",
-                                month: "short",
-                                day: "numeric",
-                              })}
-                            </span>
-                            <Badge variant="secondary" className="text-xs">
-                              {myAssignment?.role}
-                            </Badge>
+                        <div key={schedule.id} className="p-3 rounded-lg bg-muted/50 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-sm">{schedule.service}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {dateStr}
+                                {schedule.time && schedule.time !== "00:00" && (() => {
+                                  const [h, m] = schedule.time.split(":").map(Number)
+                                  return ` · ${new Date(0, 0, 0, h, m).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                                })()}
+                              </p>
+                            </div>
+                            <Badge variant="secondary" className="text-xs shrink-0">{myAssignment?.role}</Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            {statusBadge(myAssignment?.status ?? "assigned")}
+                            {isPending && (
+                              <div className="flex gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs text-green-600 border-green-300 hover:bg-green-50"
+                                  onClick={() => handleAccept(schedule.id)}
+                                >
+                                  <ThumbsUp className="h-3 w-3 mr-1" /> Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs text-red-600 border-red-300 hover:bg-red-50"
+                                  onClick={() => { setDeclineScheduleId(schedule.id); setDeclineReason("") }}
+                                >
+                                  <ThumbsDown className="h-3 w-3 mr-1" /> Decline
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -401,6 +492,36 @@ export default function VolunteerDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Decline reason dialog */}
+            <Dialog open={!!declineScheduleId} onOpenChange={(open) => { if (!open) setDeclineScheduleId(null) }}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Decline Service</DialogTitle>
+                  <DialogDescription>Please let us know why you can't attend this service.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-2">
+                  <Label htmlFor="reason">Reason</Label>
+                  <Textarea
+                    id="reason"
+                    placeholder="e.g. I have a prior commitment on that day..."
+                    value={declineReason}
+                    onChange={(e) => setDeclineReason(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeclineScheduleId(null)}>Cancel</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeclineSubmit}
+                    disabled={isSubmitting || !declineReason.trim()}
+                  >
+                    {isSubmitting ? "Submitting..." : "Submit Decline"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -427,7 +548,7 @@ export default function VolunteerDashboard() {
                       className={
                         announcement.priority === "high"
                           ? "bg-red-500/10 text-red-600"
-                          : announcement.priority === "medium"
+                          : announcement.priority === "normal"
                             ? "bg-amber-500/10 text-amber-600"
                             : "bg-blue-500/10 text-blue-600"
                       }

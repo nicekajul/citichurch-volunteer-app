@@ -2,11 +2,10 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "./supabase/client"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 // Re-export types from data.ts for compatibility
-export type { UserRole, User, Team, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, MinistryApplication } from "./data"
-import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, Quiz, MinistryApplication } from "./data"
+export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication } from "./data"
+import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate } from "./data"
 
 interface DataContextType {
   users: User[]
@@ -17,6 +16,7 @@ interface DataContextType {
   announcements: Announcement[]
   serviceSchedules: ServiceSchedule[]
   ministryApplications: MinistryApplication[]
+  certificates: Certificate[]
   isLoading: boolean
   error: string | null
 
@@ -24,10 +24,16 @@ interface DataContextType {
   refreshUsers: () => Promise<void>
   refreshTeams: () => Promise<void>
   refreshTraining: () => Promise<void>
-  refreshProgress: () => Promise<void>
+  refreshProgress: (userId?: string) => Promise<void>
   refreshAnnouncements: () => Promise<void>
   refreshSchedules: () => Promise<void>
   refreshApplications: () => Promise<void>
+  refreshCertificates: () => Promise<void>
+  addCertificate: (cert: Omit<Certificate, "id">) => Promise<void>
+  updateCertificate: (id: string, updates: Partial<Certificate>) => Promise<void>
+  deleteCertificate: (id: string) => Promise<void>
+  getEarnedCertificates: (userId: string) => Certificate[]
+  isCertificateLocked: (certId: string, userId: string) => boolean
 
   // User management
   addUser: (user: Omit<User, "id">) => Promise<void>
@@ -60,6 +66,7 @@ interface DataContextType {
   // Schedule
   addServiceSchedule: (schedule: Omit<ServiceSchedule, "id">) => Promise<void>
   updateServiceSchedule: (id: string, updates: Partial<ServiceSchedule>) => Promise<void>
+  respondToSchedule: (scheduleId: string, response: "confirmed" | "declined", reason?: string) => Promise<void>
 
   // Ministry Applications
   submitMinistryApplication: (data: { teamId: string; motivation: string; experience: string; availability: string[] }) => Promise<void>
@@ -74,6 +81,36 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapProfile(profile: any): User {
+  return {
+    id: profile.id,
+    username: profile.email?.split("@")[0] || "",
+    password: "******",
+    name: profile.name || "",
+    email: profile.email || "",
+    role: profile.role as "admin" | "leader" | "volunteer",
+    teamId: profile.team_id || undefined,
+    avatar: profile.avatar_url || undefined,
+    phone: profile.phone || undefined,
+    joinDate: profile.join_date || profile.created_at,
+    status: (profile.status as "active" | "inactive" | "pending") || "active",
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapTeam(team: any): Team {
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description || "",
+    leaderId: team.leader_id || undefined,
+    color: team.color || "#3b82f6",
+    icon: "Users",
+    requirements: [],
+  }
+}
+
 export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   // createClient() returns the same singleton instance every call.
   // It throws if env vars are missing, which surfaces a clear error in dev.
@@ -87,6 +124,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [serviceSchedules, setServiceSchedules] = useState<ServiceSchedule[]>([])
   const [ministryApplications, setMinistryApplications] = useState<MinistryApplication[]>([])
+  const [certificates, setCertificates] = useState<Certificate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -99,22 +137,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .order("created_at", { ascending: false })
 
       if (error) throw new Error(error.message)
-
-      const mappedUsers: User[] = (data || []).map((profile) => ({
-        id: profile.id,
-        username: profile.email?.split("@")[0] || "",
-        password: "******", // Never expose real passwords
-        name: profile.name || "",
-        email: profile.email || "",
-        role: profile.role as "admin" | "leader" | "volunteer",
-        teamId: profile.team_id || undefined,
-        avatar: profile.avatar_url || undefined,
-        phone: profile.phone || undefined,
-        joinDate: profile.join_date || profile.created_at,
-        status: profile.status as "active" | "inactive" | "pending" || "active",
-      }))
-
-      setUsers(mappedUsers)
+      setUsers((data || []).map(mapProfile))
     } catch (err) {
       console.error("Error fetching users:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch users")
@@ -130,18 +153,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         .order("name")
 
       if (error) throw new Error(error.message)
-
-      const mappedTeams: Team[] = (data || []).map((team) => ({
-        id: team.id,
-        name: team.name,
-        description: team.description || "",
-        leaderId: team.leader_id || undefined,
-        color: team.color || "#3b82f6",
-        icon: "Users", // Default icon
-        requirements: [], // Not stored in DB currently
-      }))
-
-      setTeams(mappedTeams)
+      setTeams((data || []).map(mapTeam))
     } catch (err) {
       console.error("Error fetching teams:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch teams")
@@ -185,6 +197,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
           passingScore: 70, // Default, not in schema
           summary: module.description || "",
           documents: moduleDocs,
+          certificateId: module.certificate_id || undefined,
+          prerequisites: Array.isArray(module.prerequisites) ? module.prerequisites : [],
         }
       })
 
@@ -216,18 +230,19 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Fetch training progress
-  const refreshProgress = async () => {
+  // Fetch training progress — optionally scoped to a single user (non-admin)
+  const refreshProgress = async (userId?: string) => {
     try {
-      const { data, error } = await supabase
-        .from("training_progress")
-        .select("*")
+      let query = supabase.from("training_progress").select("*")
+      if (userId) query = query.eq("user_id", userId)
+
+      const { data, error } = await query
 
       if (error) throw new Error(error.message)
 
       const mappedProgress: TrainingProgress[] = (data || []).map((p) => ({
         id: p.id,
-        oderId: p.user_id,
+        userId: p.user_id,
         videoId: p.training_module_id,
         completed: p.status === "completed",
         watchedSeconds: p.progress || 0,
@@ -280,19 +295,30 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       ])
 
       if (schedulesRes.error) throw new Error(schedulesRes.error.message)
+      if (assignmentsRes.error) throw new Error(assignmentsRes.error.message)
 
       const mappedSchedules: ServiceSchedule[] = (schedulesRes.data || []).map((s) => {
-        const scheduleAssignments = (assignmentsRes.data || [])
+        const scheduleAssignments: ScheduleAssignment[] = (assignmentsRes.data || [])
           .filter((a) => a.schedule_id === s.id)
           .map((a) => ({
-            oderId: a.user_id,
+            id: a.id,
+            userId: a.user_id,
             teamId: a.team_id,
             role: a.role,
+            status: (a.status as ScheduleAssignment["status"]) || "assigned",
+            rejectionReason: a.rejection_reason || undefined,
           }))
+
+        const dt = new Date(s.service_date)
+        const date = s.service_date.slice(0, 10)
+        const hours = dt.getHours().toString().padStart(2, "0")
+        const minutes = dt.getMinutes().toString().padStart(2, "0")
+        const time = `${hours}:${minutes}`
 
         return {
           id: s.id,
-          date: s.service_date,
+          date,
+          time,
           service: s.service_name,
           assignments: scheduleAssignments,
         }
@@ -308,36 +334,72 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   // Only load data when an authenticated session exists
   useEffect(() => {
     let mounted = true
+    // Each loadAllData call gets a generation number. Only the latest call
+    // is allowed to flip isLoading → false, so a slow previous load can't
+    // overwrite the UI state of a newer one.
+    let generation = 0
 
-    const loadAllData = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loadAllData = async (session: any) => {
       if (!mounted) return
+      const myGeneration = ++generation
       setIsLoading(true)
+
+      // For non-admin users, scope progress to their own records only.
+      // Admins need all progress for the overview dashboard.
+      const role: string = session?.user?.user_metadata?.role ?? ""
+      const userId: string | undefined =
+        role !== "admin" ? session?.user?.id : undefined
+
       await Promise.all([
         refreshUsers(),
         refreshTeams(),
         refreshTraining(),
-        refreshProgress(),
+        refreshProgress(userId),
         refreshAnnouncements(),
         refreshSchedules(),
         refreshApplications(),
+        refreshCertificates(),
       ])
-      if (mounted) setIsLoading(false)
+
+      // Only mark loading complete if no newer load has started since we began.
+      if (mounted && myGeneration === generation) setIsLoading(false)
     }
 
-    // Listen for auth changes — only fetch data when signed in (not on token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
-        loadAllData()
-      } else if (event === "SIGNED_OUT") {
-        setUsers([])
-        setTeams([])
-        setTrainingVideos([])
-        setQuizzes([])
-        setTrainingProgress([])
-        setAnnouncements([])
-        setServiceSchedules([])
-        setMinistryApplications([])
+    const clearData = () => {
+      generation++ // invalidate any in-flight loadAllData so it won't flip isLoading → false
+      setUsers([])
+      setTeams([])
+      setTrainingVideos([])
+      setQuizzes([])
+      setTrainingProgress([])
+      setAnnouncements([])
+      setServiceSchedules([])
+      setMinistryApplications([])
+      setIsLoading(false)
+    }
+
+    // Directly check session on mount — reliable on browser refresh
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return
+      if (session) {
+        loadAllData(session)
+      } else {
         setIsLoading(false)
+      }
+    })
+
+    // Listen for subsequent auth changes (login / logout / user switch)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        loadAllData(session)
+      } else if (event === "SIGNED_OUT") {
+        // Verify no new session exists before wiping state. A stale SIGNED_OUT
+        // from a previous signOut() can arrive AFTER a new user has already
+        // signed in if logout() wasn't awaited before navigating.
+        supabase.auth.getSession().then(({ data: { session: current } }) => {
+          if (!current) clearData()
+        })
       }
     })
 
@@ -349,19 +411,23 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
   // User management
   const addUser = async (user: Omit<User, "id">) => {
-    const { error } = await supabase.from("profiles").insert({
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      team_id: user.teamId,
-      phone: user.phone,
-      avatar_url: user.avatar,
-      status: user.status,
-      join_date: user.joinDate,
-    })
+    const { data, error } = await supabase
+      .from("profiles")
+      .insert({
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        team_id: user.teamId,
+        phone: user.phone,
+        avatar_url: user.avatar,
+        status: user.status,
+        join_date: user.joinDate,
+      })
+      .select()
+      .single()
 
     if (error) throw error
-    await refreshUsers()
+    setUsers((prev) => [mapProfile(data), ...prev])
   }
 
   const updateUser = async (id: string, updates: Partial<User>) => {
@@ -379,13 +445,15 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       .eq("id", id)
 
     if (error) throw error
-    await refreshUsers()
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, ...updates } : u))
+    )
   }
 
   const deleteUser = async (id: string) => {
     const { error } = await supabase.from("profiles").delete().eq("id", id)
     if (error) throw error
-    await refreshUsers()
+    setUsers((prev) => prev.filter((u) => u.id !== id))
   }
 
   const assignUserToTeam = async (userId: string, teamId: string) => {
@@ -394,15 +462,19 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
   // Team management
   const addTeam = async (team: Omit<Team, "id">) => {
-    const { error } = await supabase.from("teams").insert({
-      name: team.name,
-      description: team.description,
-      leader_id: team.leaderId,
-      color: team.color,
-    })
+    const { data, error } = await supabase
+      .from("teams")
+      .insert({
+        name: team.name,
+        description: team.description,
+        leader_id: team.leaderId,
+        color: team.color,
+      })
+      .select()
+      .single()
 
     if (error) throw error
-    await refreshTeams()
+    setTeams((prev) => [...prev, mapTeam(data)])
   }
 
   const updateTeam = async (id: string, updates: Partial<Team>) => {
@@ -417,13 +489,15 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       .eq("id", id)
 
     if (error) throw error
-    await refreshTeams()
+    setTeams((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
+    )
   }
 
   const deleteTeam = async (id: string) => {
     const { error } = await supabase.from("teams").delete().eq("id", id)
     if (error) throw error
-    await refreshTeams()
+    setTeams((prev) => prev.filter((t) => t.id !== id))
   }
 
   // Training management
@@ -442,6 +516,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         quiz_enabled: video.quizEnabled ?? false,
         required: video.quizRequired ?? false,
         created_by: currentUserId,
+        certificate_id: video.certificateId || null,
+        prerequisites: video.prerequisites || [],
       })
       .select()
       .single()
@@ -475,6 +551,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         team_id: updates.teamId,
         quiz_enabled: updates.quizEnabled,
         required: updates.quizRequired,
+        certificate_id: updates.certificateId !== undefined ? updates.certificateId || null : undefined,
+        prerequisites: updates.prerequisites,
       })
       .eq("id", id)
 
@@ -526,81 +604,102 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
   // Progress management
   const updateProgress = async (userId: string, videoId: string, updates: Partial<TrainingProgress>) => {
-    // Check if progress exists
-    const { data: existing } = await supabase
+    const { error } = await supabase
       .from("training_progress")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("training_module_id", videoId)
-      .single()
-
-    if (existing) {
-      // Update existing
-      const { error } = await supabase
-        .from("training_progress")
-        .update({
-          progress: updates.watchedSeconds,
-          quiz_score: updates.quizScore,
+      .upsert(
+        {
+          user_id: userId,
+          training_module_id: videoId,
+          progress: updates.watchedSeconds ?? 0,
+          quiz_score: updates.quizScore ?? null,
           status: updates.completed ? "completed" : "in_progress",
-          completed_at: updates.completedAt,
-        })
-        .eq("id", existing.id)
+          completed_at: updates.completedAt ?? null,
+        },
+        { onConflict: "user_id,training_module_id" }
+      )
 
-      if (error) throw error
-    } else {
-      // Create new
-      const { error } = await supabase.from("training_progress").insert({
-        user_id: userId,
-        training_module_id: videoId,
-        progress: updates.watchedSeconds || 0,
-        quiz_score: updates.quizScore,
-        status: updates.completed ? "completed" : "in_progress",
-        completed_at: updates.completedAt,
-      })
+    if (error) throw error
 
-      if (error) throw error
-    }
-
-    await refreshProgress()
+    // Update local state optimistically
+    setTrainingProgress((prev) => {
+      const existing = prev.find((p) => p.userId === userId && p.videoId === videoId)
+      const updated: TrainingProgress = {
+        id: existing?.id ?? `${userId}-${videoId}`,
+        userId: userId,
+        videoId,
+        completed: updates.completed ?? existing?.completed ?? false,
+        watchedSeconds: updates.watchedSeconds ?? existing?.watchedSeconds ?? 0,
+        quizScore: updates.quizScore ?? existing?.quizScore,
+        quizPassed: updates.quizScore !== undefined ? updates.quizScore >= 70 : existing?.quizPassed,
+        completedAt: updates.completedAt ?? existing?.completedAt,
+        approvedBy: existing?.approvedBy,
+      }
+      if (existing) {
+        return prev.map((p) => (p.userId === userId && p.videoId === videoId ? updated : p))
+      }
+      return [...prev, updated]
+    })
   }
 
   const approveProgress = async (progressId: string, approverId: string) => {
     // Approval logic not in current schema, but we can update status
+    const { data: sessionData } = await supabase.auth.getSession()
+    const currentUserId = sessionData?.session?.user?.id
+    const currentRole: string = sessionData?.session?.user?.user_metadata?.role ?? ""
+
     const { error } = await supabase
       .from("training_progress")
       .update({ status: "approved" })
       .eq("id", progressId)
 
     if (error) throw error
-    await refreshProgress()
+    // Scope the refresh to the current user's records if they are not an admin,
+    // matching the same RLS-safe scoping used on initial load.
+    await refreshProgress(currentRole !== "admin" ? currentUserId : undefined)
   }
 
   // Announcements
   const addAnnouncement = async (announcement: Omit<Announcement, "id" | "createdAt">) => {
-    const { error } = await supabase.from("announcements").insert({
-      title: announcement.title,
-      content: announcement.content,
-      author_id: announcement.authorId,
-      team_id: announcement.teamId,
-      priority: announcement.priority,
-    })
+    const { data, error } = await supabase
+      .from("announcements")
+      .insert({
+        title: announcement.title,
+        content: announcement.content,
+        author_id: announcement.authorId,
+        team_id: announcement.teamId,
+        priority: announcement.priority,
+      })
+      .select()
+      .single()
 
-    if (error) throw error
-    await refreshAnnouncements()
+    if (error) throw new Error(error.message)
+    const mapped: Announcement = {
+      id: data.id,
+      title: data.title,
+      content: data.content,
+      authorId: data.author_id,
+      teamId: data.team_id || undefined,
+      createdAt: data.created_at,
+      priority: data.priority as "low" | "normal" | "high",
+    }
+    setAnnouncements((prev) => [mapped, ...prev])
   }
 
   const deleteAnnouncement = async (id: string) => {
     const { error } = await supabase.from("announcements").delete().eq("id", id)
     if (error) throw error
-    await refreshAnnouncements()
+    setAnnouncements((prev) => prev.filter((a) => a.id !== id))
   }
 
   // Schedule
   const addServiceSchedule = async (schedule: Omit<ServiceSchedule, "id">) => {
+    const serviceDateTime = schedule.time
+      ? `${schedule.date}T${schedule.time}:00`
+      : `${schedule.date}T00:00:00`
     const { data, error } = await supabase
       .from("service_schedules")
       .insert({
-        service_date: schedule.date,
+        service_date: serviceDateTime,
         service_name: schedule.service,
       })
       .select()
@@ -613,23 +712,28 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       const { error: assignError } = await supabase.from("schedule_assignments").insert(
         schedule.assignments.map((a) => ({
           schedule_id: data.id,
-          user_id: a.oderId,
+          user_id: a.userId,
           team_id: a.teamId,
           role: a.role,
         }))
       )
 
-      if (assignError) console.error("Error adding assignments:", assignError)
+      if (assignError) throw new Error(assignError.message)
     }
 
     await refreshSchedules()
   }
 
   const updateServiceSchedule = async (id: string, updates: Partial<ServiceSchedule>) => {
+    let serviceDateTime: string | undefined
+    if (updates.date) {
+      const time = updates.time ?? "00:00"
+      serviceDateTime = `${updates.date}T${time}:00`
+    }
     const { error } = await supabase
       .from("service_schedules")
       .update({
-        service_date: updates.date,
+        service_date: serviceDateTime,
         service_name: updates.service,
       })
       .eq("id", id)
@@ -638,23 +742,76 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
     // Update assignments if provided
     if (updates.assignments) {
-      // Delete old assignments
-      await supabase.from("schedule_assignments").delete().eq("schedule_id", id)
+      const { data: existing } = await supabase
+        .from("schedule_assignments")
+        .select("id, user_id, status, rejection_reason")
+        .eq("schedule_id", id)
 
-      // Add new assignments
+      const { error: delError } = await supabase
+        .from("schedule_assignments")
+        .delete()
+        .eq("schedule_id", id)
+      if (delError) throw new Error(delError.message)
+
       if (updates.assignments.length > 0) {
-        await supabase.from("schedule_assignments").insert(
-          updates.assignments.map((a) => ({
-            schedule_id: id,
-            user_id: a.oderId,
-            team_id: a.teamId,
-            role: a.role,
-          }))
+        // Preserve status/reason for assignments that already existed
+        const statusMap = new Map<string, { status: string; rejection_reason: string | null }>(
+          (existing || []).map((e) => [e.user_id as string, { status: e.status as string, rejection_reason: e.rejection_reason as string | null }])
         )
+        const { error: insertError } = await supabase.from("schedule_assignments").insert(
+          updates.assignments.map((a) => {
+            const prev = statusMap.get(a.userId)
+            return {
+              schedule_id: id,
+              user_id: a.userId,
+              team_id: a.teamId,
+              role: a.role,
+              status: prev?.status ?? "assigned",
+              rejection_reason: prev?.rejection_reason ?? null,
+            }
+          })
+        )
+        if (insertError) throw new Error(insertError.message)
       }
     }
 
     await refreshSchedules()
+  }
+
+  const respondToSchedule = async (
+    scheduleId: string,
+    response: "confirmed" | "declined",
+    reason?: string
+  ) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) throw new Error("Not authenticated")
+
+    const { error } = await supabase
+      .from("schedule_assignments")
+      .update({
+        status: response,
+        rejection_reason: response === "declined" ? (reason ?? null) : null,
+      })
+      .eq("schedule_id", scheduleId)
+      .eq("user_id", userId)
+
+    if (error) throw new Error(error.message)
+
+    // Update local state optimistically
+    setServiceSchedules((prev) =>
+      prev.map((s) => {
+        if (s.id !== scheduleId) return s
+        return {
+          ...s,
+          assignments: s.assignments.map((a) =>
+            a.userId === userId
+              ? { ...a, status: response, rejectionReason: response === "declined" ? reason : undefined }
+              : a
+          ),
+        }
+      })
+    )
   }
 
   // Ministry Applications
@@ -685,6 +842,90 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Error fetching applications:", err)
     }
+  }
+
+  const refreshCertificates = async () => {
+    try {
+      const { data, error } = await supabase.from("certificates").select("*").order("order_index")
+      if (error) throw new Error(error.message)
+      setCertificates(
+        (data || []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description || "",
+          color: c.color || "#3b82f6",
+          teamId: c.team_id || undefined,
+          prerequisiteCertificateId: c.prerequisite_certificate_id || undefined,
+          orderIndex: c.order_index ?? 0,
+        }))
+      )
+    } catch (err) {
+      console.error("Error fetching certificates:", err)
+    }
+  }
+
+  const addCertificate = async (cert: Omit<Certificate, "id">) => {
+    const { data, error } = await supabase
+      .from("certificates")
+      .insert({
+        name: cert.name,
+        description: cert.description,
+        color: cert.color,
+        team_id: cert.teamId || null,
+        prerequisite_certificate_id: cert.prerequisiteCertificateId || null,
+        order_index: cert.orderIndex ?? 0,
+      })
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+    setCertificates((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        name: data.name,
+        description: data.description || "",
+        color: data.color || "#3b82f6",
+        teamId: data.team_id || undefined,
+        prerequisiteCertificateId: data.prerequisite_certificate_id || undefined,
+        orderIndex: data.order_index ?? 0,
+      },
+    ])
+  }
+
+  const updateCertificate = async (id: string, updates: Partial<Certificate>) => {
+    const dbUpdates: Record<string, unknown> = {}
+    if (updates.name !== undefined) dbUpdates.name = updates.name
+    if (updates.description !== undefined) dbUpdates.description = updates.description
+    if (updates.color !== undefined) dbUpdates.color = updates.color
+    if ("teamId" in updates) dbUpdates.team_id = updates.teamId ?? null
+    if ("prerequisiteCertificateId" in updates) dbUpdates.prerequisite_certificate_id = updates.prerequisiteCertificateId ?? null
+    if (updates.orderIndex !== undefined) dbUpdates.order_index = updates.orderIndex
+    const { error } = await supabase.from("certificates").update(dbUpdates).eq("id", id)
+    if (error) throw new Error(error.message)
+    setCertificates((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)))
+  }
+
+  const deleteCertificate = async (id: string) => {
+    const { error } = await supabase.from("certificates").delete().eq("id", id)
+    if (error) throw new Error(error.message)
+    setCertificates((prev) => prev.filter((c) => c.id !== id))
+  }
+
+  const getEarnedCertificates = (userId: string): Certificate[] => {
+    const completedIds = new Set(
+      trainingProgress.filter((p) => p.userId === userId && p.completed).map((p) => p.videoId)
+    )
+    return certificates.filter((cert) => {
+      const certModules = trainingVideos.filter((v) => v.certificateId === cert.id)
+      return certModules.length > 0 && certModules.every((v) => completedIds.has(v.id))
+    })
+  }
+
+  const isCertificateLocked = (certId: string, userId: string): boolean => {
+    const cert = certificates.find((c) => c.id === certId)
+    if (!cert?.prerequisiteCertificateId) return false
+    const earnedIds = new Set(getEarnedCertificates(userId).map((c) => c.id))
+    return !earnedIds.has(cert.prerequisiteCertificateId)
   }
 
   const submitMinistryApplication = async (data: {
@@ -749,7 +990,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   }
 
   const getUserProgress = (userId: string) => {
-    return trainingProgress.filter((p) => p.oderId === userId)
+    return trainingProgress.filter((p) => p.userId === userId)
   }
 
   const getVideoQuiz = (videoId: string) => {
@@ -775,6 +1016,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         announcements,
         serviceSchedules,
         ministryApplications,
+        certificates,
         isLoading,
         error,
         refreshUsers,
@@ -784,6 +1026,12 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshAnnouncements,
         refreshSchedules,
         refreshApplications,
+        refreshCertificates,
+        addCertificate,
+        updateCertificate,
+        deleteCertificate,
+        getEarnedCertificates,
+        isCertificateLocked,
         addUser,
         updateUser,
         deleteUser,
@@ -802,6 +1050,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         deleteAnnouncement,
         addServiceSchedule,
         updateServiceSchedule,
+        respondToSchedule,
         submitMinistryApplication,
         reviewApplication,
         getTeamMembers,

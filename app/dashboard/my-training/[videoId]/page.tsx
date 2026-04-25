@@ -79,7 +79,7 @@ export default function TrainingVideoPage() {
   const videoId = params.videoId as string
   const video = trainingVideos.find((v) => v.id === videoId)
   const quiz = quizzes.find((q) => q.videoId === videoId)
-  const myProgress = trainingProgress.find((p) => p.oderId === user?.id && p.videoId === videoId)
+  const myProgress = trainingProgress.find((p) => p.userId === user?.id && p.videoId === videoId)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -152,7 +152,7 @@ export default function TrainingVideoPage() {
     }
   }, [isEmbedVideo, pollYouTubeProgress])
 
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user?.teamId)
+  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user?.team_id)
   const currentIndex = relevantVideos.findIndex((v) => v.id === videoId)
   const prevVideo = currentIndex > 0 ? relevantVideos[currentIndex - 1] : null
   const nextVideo = currentIndex < relevantVideos.length - 1 ? relevantVideos[currentIndex + 1] : null

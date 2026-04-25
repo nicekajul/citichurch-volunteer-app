@@ -36,9 +36,16 @@ import {
   Upload,
   X,
   File,
+  Link as LinkIcon,
+  AlertCircle,
+  Award,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { TrainingDocument } from "@/lib/data"
+import { CertificateBadge } from "@/components/dashboard/certificate-badge"
+import type { Certificate } from "@/lib/data"
+import { cn, getVideoThumbnail } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 
 export default function TrainingPage() {
   const { user } = useAuth()
@@ -46,11 +53,15 @@ export default function TrainingPage() {
     teams,
     trainingVideos,
     quizzes,
+    certificates,
     addTrainingVideo,
     updateTrainingVideo,
     deleteTrainingVideo,
     addQuiz,
     updateQuiz,
+    addCertificate,
+    updateCertificate,
+    deleteCertificate,
   } = useData()
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -74,7 +85,13 @@ export default function TrainingPage() {
     summary: string
     documents: TrainingDocument[]
     hasVideo: boolean
+    certificateId: string
+    prerequisites: string[]
   } | null>(null)
+
+  const [isCertModalOpen, setIsCertModalOpen] = useState(false)
+  const [certForm, setCertForm] = useState({ name: "", description: "", color: "#3b82f6", prerequisiteCertificateId: "", teamId: "", orderIndex: 0 })
+  const [editCertId, setEditCertId] = useState<string | null>(null)
 
   const [newVideo, setNewVideo] = useState({
     title: "",
@@ -89,10 +106,21 @@ export default function TrainingPage() {
     passingScore: 70,
     summary: "",
     documents: [] as TrainingDocument[], // Documents array
+    certificateId: "",
+    prerequisites: [] as string[],
   })
 
   const [newDocName, setNewDocName] = useState("")
   const [newDocUrl, setNewDocUrl] = useState("")
+
+  // Video source for Add form: "url" = YouTube/direct link, "upload" = file upload
+  const [newVideoSource, setNewVideoSource] = useState<"url" | "upload">("url")
+  const [newUploadFile, setNewUploadFile] = useState<File | null>(null)
+  // Video source for Edit form
+  const [editVideoSource, setEditVideoSource] = useState<"url" | "upload">("url")
+  const [editUploadFile, setEditUploadFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const [quizQuestions, setQuizQuestions] = useState<
     {
@@ -106,19 +134,44 @@ export default function TrainingPage() {
     return null
   }
 
+  const CERT_COLORS = [
+    "#3b82f6","#22c55e","#a855f7","#f97316","#ef4444","#eab308","#ec4899","#14b8a6",
+  ]
+
   const filteredVideos = trainingVideos.filter((v) => {
     const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesTeam = filterTeam === "all" || (filterTeam === "general" && !v.teamId) || v.teamId === filterTeam
 
     if (user?.role === "leader") {
-      const isRelevant = !v.teamId || v.teamId === user.teamId
+      const isRelevant = !v.teamId || v.teamId === user.team_id
       return matchesSearch && isRelevant && (filterTeam === "all" || matchesTeam)
     }
 
     return matchesSearch && matchesTeam
   })
 
-  const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.teamId)
+  const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.team_id)
+
+  // Detects video duration from a local File before upload
+  const getFileDuration = (file: File): Promise<number> =>
+    new Promise((resolve) => {
+      const video = document.createElement("video")
+      video.preload = "metadata"
+      video.onloadedmetadata = () => { URL.revokeObjectURL(video.src); resolve(Math.round(video.duration)) }
+      video.onerror = () => resolve(0)
+      video.src = URL.createObjectURL(file)
+    })
+
+  // Uploads a video file to Supabase Storage and returns the public URL + detected duration
+  const uploadVideoFile = async (file: File): Promise<{ url: string; duration: number }> => {
+    const duration = await getFileDuration(file)
+    const supabase = createClient()
+    const path = `training-videos/${Date.now()}-${file.name.replace(/\s+/g, "-")}`
+    const { error } = await supabase.storage.from("training-videos").upload(path, file)
+    if (error) throw new Error(error.message)
+    const { data: { publicUrl } } = supabase.storage.from("training-videos").getPublicUrl(path)
+    return { url: publicUrl, duration }
+  }
 
   const handleAddDocument = () => {
     if (!newDocName.trim() || !newDocUrl.trim()) return
@@ -148,37 +201,66 @@ export default function TrainingPage() {
     })
   }
 
-  const handleAddVideo = () => {
+  const handleSaveCert = async () => {
+    if (!certForm.name.trim()) return
+    const payload = {
+      name: certForm.name,
+      description: certForm.description,
+      color: certForm.color,
+      prerequisiteCertificateId: certForm.prerequisiteCertificateId || undefined,
+      teamId: user?.role === "leader" ? user.team_id || undefined : certForm.teamId || undefined,
+      orderIndex: certForm.orderIndex,
+    }
+    if (editCertId) {
+      await updateCertificate(editCertId, payload)
+    } else {
+      await addCertificate(payload)
+    }
+    setCertForm({ name: "", description: "", color: "#3b82f6", prerequisiteCertificateId: "", teamId: "", orderIndex: 0 })
+    setEditCertId(null)
+  }
+
+  const handleAddVideo = async () => {
+    setUploadError(null)
+    let videoUrl: string | undefined = newVideo.hasVideo ? newVideo.videoUrl || undefined : undefined
+    let duration = newVideo.hasVideo ? newVideo.duration : 0
+
+    if (newVideo.hasVideo && newVideoSource === "upload") {
+      if (!newUploadFile) return
+      setIsUploading(true)
+      try {
+        const result = await uploadVideoFile(newUploadFile)
+        videoUrl = result.url
+        duration = result.duration
+      } catch (e) {
+        setUploadError(e instanceof Error ? e.message : "Upload failed")
+        setIsUploading(false)
+        return
+      }
+      setIsUploading(false)
+    }
+
     const teamId =
-      user?.role === "leader" ? user.teamId : newVideo.teamId === "general" ? undefined : newVideo.teamId
+      user?.role === "leader" ? user.team_id : newVideo.teamId === "general" ? undefined : newVideo.teamId
 
     addTrainingVideo({
       title: newVideo.title,
       description: newVideo.description,
-      videoUrl: newVideo.hasVideo ? newVideo.videoUrl : undefined, // Only include URL if has video
-      duration: newVideo.hasVideo ? newVideo.duration : 0,
-      teamId: teamId,
+      videoUrl,
+      duration,
+      teamId: teamId || undefined,
       order: newVideo.order,
       quizEnabled: newVideo.quizEnabled,
       quizRequired: newVideo.quizRequired,
       passingScore: newVideo.passingScore,
       summary: newVideo.summary,
-      documents: newVideo.documents, // Include documents
+      documents: newVideo.documents,
+      certificateId: newVideo.certificateId || undefined,
+      prerequisites: newVideo.prerequisites,
     })
-    setNewVideo({
-      title: "",
-      description: "",
-      hasVideo: true,
-      videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-      duration: 120,
-      teamId: "general",
-      order: 1,
-      quizEnabled: false,
-      quizRequired: false,
-      passingScore: 70,
-      summary: "",
-      documents: [],
-    })
+    setNewVideo({ title: "", description: "", hasVideo: true, videoUrl: "", duration: 120, teamId: "general", order: 1, quizEnabled: false, quizRequired: false, passingScore: 70, summary: "", documents: [], certificateId: "", prerequisites: [] })
+    setNewVideoSource("url")
+    setNewUploadFile(null)
     setIsAddVideoOpen(false)
   }
 
@@ -199,19 +281,43 @@ export default function TrainingPage() {
         summary: video.summary,
         documents: video.documents || [],
         hasVideo: !!video.videoUrl,
+        certificateId: video.certificateId || "",
+        prerequisites: video.prerequisites || [],
       })
+      setEditVideoSource("url")
+      setEditUploadFile(null)
+      setUploadError(null)
       setIsEditVideoOpen(true)
     }
   }
 
-  const handleSaveEditVideo = () => {
+  const handleSaveEditVideo = async () => {
     if (!editVideoData) return
+    setUploadError(null)
+
+    let videoUrl: string | undefined = editVideoData.hasVideo ? editVideoData.videoUrl || undefined : undefined
+    let duration = editVideoData.hasVideo ? editVideoData.duration : 0
+
+    if (editVideoData.hasVideo && editVideoSource === "upload") {
+      if (!editUploadFile) return
+      setIsUploading(true)
+      try {
+        const result = await uploadVideoFile(editUploadFile)
+        videoUrl = result.url
+        duration = result.duration
+      } catch (e) {
+        setUploadError(e instanceof Error ? e.message : "Upload failed")
+        setIsUploading(false)
+        return
+      }
+      setIsUploading(false)
+    }
 
     updateTrainingVideo(editVideoData.id, {
       title: editVideoData.title,
       description: editVideoData.description,
-      videoUrl: editVideoData.hasVideo ? editVideoData.videoUrl : undefined,
-      duration: editVideoData.hasVideo ? editVideoData.duration : 0,
+      videoUrl,
+      duration,
       teamId: editVideoData.teamId === "general" ? undefined : editVideoData.teamId,
       order: editVideoData.order,
       quizEnabled: editVideoData.quizEnabled,
@@ -219,9 +325,13 @@ export default function TrainingPage() {
       passingScore: editVideoData.passingScore,
       summary: editVideoData.summary,
       documents: editVideoData.documents,
+      certificateId: editVideoData.certificateId || undefined,
+      prerequisites: editVideoData.prerequisites,
     })
     setIsEditVideoOpen(false)
     setEditVideoData(null)
+    setEditVideoSource("url")
+    setEditUploadFile(null)
   }
 
   const handleSaveQuiz = () => {
@@ -289,7 +399,7 @@ export default function TrainingPage() {
 
   const canEditVideo = (video: (typeof trainingVideos)[0]) => {
     if (user?.role === "admin") return true
-    if (user?.role === "team_leader" && video.teamId === user.teamId) return true
+    if (user?.role === "leader" && video.teamId === user.team_id) return true
     return false
   }
 
@@ -342,6 +452,157 @@ export default function TrainingPage() {
             </Select>
           </div>
 
+          <div className="flex gap-2">
+          <Dialog open={isCertModalOpen} onOpenChange={setIsCertModalOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Award className="w-4 h-4 mr-2" />
+                Manage Certificates
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Manage Certificates</DialogTitle>
+                <DialogDescription>Create and manage training certificates for volunteers</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                {certificates.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Existing Certificates</Label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {certificates.map((cert) => (
+                        <div key={cert.id} className="flex items-center justify-between p-2 rounded-lg border border-border/50">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cert.color }} />
+                            <span className="font-medium text-sm">{cert.name}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => {
+                                setEditCertId(cert.id)
+                                setCertForm({ name: cert.name, description: cert.description, color: cert.color, prerequisiteCertificateId: cert.prerequisiteCertificateId || "", teamId: cert.teamId || "", orderIndex: cert.orderIndex })
+                              }}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive"
+                              onClick={() => deleteCertificate(cert.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <Label className="text-sm font-medium">{editCertId ? "Edit Certificate" : "Add New Certificate"}</Label>
+                  <div className="space-y-2">
+                    <Label>Name</Label>
+                    <Input
+                      value={certForm.name}
+                      onChange={(e) => setCertForm({ ...certForm, name: e.target.value })}
+                      placeholder="e.g., Production Basics"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Input
+                      value={certForm.description}
+                      onChange={(e) => setCertForm({ ...certForm, description: e.target.value })}
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Color</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      {CERT_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setCertForm({ ...certForm, color })}
+                          className={`w-7 h-7 rounded-full border-2 transition-transform ${certForm.color === color ? "border-foreground scale-110" : "border-transparent"}`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prerequisite Certificate</Label>
+                    <p className="text-xs text-muted-foreground">Volunteers must earn this certificate before unlocking the new one</p>
+                    <Select
+                      value={certForm.prerequisiteCertificateId || "none"}
+                      onValueChange={(v) => setCertForm({ ...certForm, prerequisiteCertificateId: v === "none" ? "" : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="No prerequisite" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No prerequisite (unlocked for all)</SelectItem>
+                        {certificates
+                          .filter((c) => c.id !== editCertId)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {user?.role === "admin" && (
+                    <div className="space-y-2">
+                      <Label>Assign to Team</Label>
+                      <p className="text-xs text-muted-foreground">Leave empty for ministry-wide certificates</p>
+                      <Select
+                        value={certForm.teamId || "all"}
+                        onValueChange={(v) => setCertForm({ ...certForm, teamId: v === "all" ? "" : v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All teams" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All teams (ministry-wide)</SelectItem>
+                          {teams.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label>Display Order</Label>
+                    <p className="text-xs text-muted-foreground">Lower numbers appear first in the roadmap (0 = first)</p>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={certForm.orderIndex}
+                      onChange={(e) => setCertForm({ ...certForm, orderIndex: Number.parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSaveCert} disabled={!certForm.name.trim()} className="flex-1">
+                      {editCertId ? "Update Certificate" : "Add Certificate"}
+                    </Button>
+                    {editCertId && (
+                      <Button variant="outline" onClick={() => { setEditCertId(null); setCertForm({ name: "", description: "", color: "#3b82f6", prerequisiteCertificateId: "", teamId: "", orderIndex: 0 }) }}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isAddVideoOpen} onOpenChange={setIsAddVideoOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90">
@@ -354,7 +615,7 @@ export default function TrainingPage() {
                 <DialogTitle>Add Training Module</DialogTitle>
                 <DialogDescription>
                   {user?.role === "leader"
-                    ? `Create a new training module for your ${teams.find((t) => t.id === user.teamId)?.name} team`
+                    ? `Create a new training module for your ${teams.find((t) => t.id === user.team_id)?.name} team`
                     : "Create a new training module with video and/or documents"}
                 </DialogDescription>
               </DialogHeader>
@@ -382,11 +643,10 @@ export default function TrainingPage() {
                 <div className="space-y-3 pt-3 border-t border-border">
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
-                      <Label htmlFor="include-video" className="font-medium">Include Video</Label>
+                      <Label className="font-medium">Include Video</Label>
                       <p className="text-xs text-muted-foreground mt-0.5">Add a video to this training module</p>
                     </div>
                     <Switch
-                      id="include-video"
                       checked={newVideo.hasVideo}
                       onCheckedChange={(checked) => setNewVideo({ ...newVideo, hasVideo: checked })}
                     />
@@ -394,24 +654,75 @@ export default function TrainingPage() {
 
                   {newVideo.hasVideo && (
                     <div className="space-y-3 pl-4 border-l-2 border-primary/20">
-                      <div className="space-y-2">
-                        <Label htmlFor="video-url">Video URL</Label>
-                        <Input
-                          id="video-url"
-                          value={newVideo.videoUrl}
-                          onChange={(e) => setNewVideo({ ...newVideo, videoUrl: e.target.value })}
-                          placeholder="https://www.w3schools.com/html/mov_bbb.mp4"
-                        />
+                      {/* Source toggle */}
+                      <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                        <button
+                          type="button"
+                          onClick={() => { setNewVideoSource("url"); setNewUploadFile(null) }}
+                          className={cn("flex-1 flex items-center justify-center gap-2 py-2 font-medium transition-colors", newVideoSource === "url" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                        >
+                          <LinkIcon className="w-3.5 h-3.5" /> YouTube / URL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setNewVideoSource("upload"); setNewVideo({ ...newVideo, videoUrl: "" }) }}
+                          className={cn("flex-1 flex items-center justify-center gap-2 py-2 font-medium transition-colors", newVideoSource === "upload" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                        >
+                          <Upload className="w-3.5 h-3.5" /> Upload File
+                        </button>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="video-duration">Duration (seconds)</Label>
-                        <Input
-                          id="video-duration"
-                          type="number"
-                          value={newVideo.duration}
-                          onChange={(e) => setNewVideo({ ...newVideo, duration: Number.parseInt(e.target.value) || 0 })}
-                        />
-                      </div>
+
+                      {newVideoSource === "url" ? (
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label>Video URL</Label>
+                            <Input
+                              value={newVideo.videoUrl}
+                              onChange={(e) => setNewVideo({ ...newVideo, videoUrl: e.target.value })}
+                              placeholder="https://youtube.com/watch?v=... or direct video URL"
+                            />
+                          </div>
+                          {/* Live YouTube thumbnail preview */}
+                          {getVideoThumbnail(newVideo.videoUrl) && (
+                            <img
+                              src={getVideoThumbnail(newVideo.videoUrl)!}
+                              alt="YouTube thumbnail preview"
+                              className="w-full rounded-lg aspect-video object-cover"
+                            />
+                          )}
+                          <div className="space-y-2">
+                            <Label>Duration (seconds)</Label>
+                            <Input
+                              type="number"
+                              value={newVideo.duration}
+                              onChange={(e) => setNewVideo({ ...newVideo, duration: Number.parseInt(e.target.value) || 0 })}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label>Video File</Label>
+                          <label
+                            htmlFor="new-video-file"
+                            className="flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                          >
+                            <Upload className="w-6 h-6 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground text-center">
+                              {newUploadFile ? newUploadFile.name : "Click to choose a video file"}
+                            </span>
+                            {newUploadFile && (
+                              <span className="text-xs text-muted-foreground">{(newUploadFile.size / 1024 / 1024).toFixed(1)} MB · Duration auto-detected on save</span>
+                            )}
+                            <input
+                              id="new-video-file"
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => setNewUploadFile(e.target.files?.[0] ?? null)}
+                            />
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -483,12 +794,55 @@ export default function TrainingPage() {
                     </Select>
                   ) : (
                     <Input
-                      value={teams.find((t) => t.id === user?.teamId)?.name || "Your Team"}
+                      value={teams.find((t) => t.id === user?.team_id)?.name || "Your Team"}
                       disabled
                       className="bg-muted"
                     />
                   )}
                 </div>
+
+                <div className="space-y-2">
+                  <Label>Certificate</Label>
+                  <Select value={newVideo.certificateId} onValueChange={(v) => setNewVideo({ ...newVideo, certificateId: v === "none" ? "" : v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {certificates.map((cert) => (
+                        <SelectItem key={cert.id} value={cert.id}>
+                          {cert.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {trainingVideos.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Prerequisites (must complete before this module)</Label>
+                    <div className="max-h-40 overflow-y-auto space-y-1 border border-border rounded-md p-2">
+                      {trainingVideos.map((v) => (
+                        <label key={v.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={newVideo.prerequisites.includes(v.id)}
+                            onChange={(e) => {
+                              setNewVideo({
+                                ...newVideo,
+                                prerequisites: e.target.checked
+                                  ? [...newVideo.prerequisites, v.id]
+                                  : newVideo.prerequisites.filter((id) => id !== v.id),
+                              })
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span>{v.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>Summary / Review Notes</Label>
@@ -542,16 +896,26 @@ export default function TrainingPage() {
                   )}
                 </div>
               </div>
+              {uploadError && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {uploadError}
+                </div>
+              )}
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddVideoOpen(false)}>
+                <Button variant="outline" onClick={() => setIsAddVideoOpen(false)} disabled={isUploading}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddVideo} disabled={!newVideo.title}>
-                  Add Training
+                <Button
+                  onClick={handleAddVideo}
+                  disabled={!newVideo.title || isUploading || (newVideo.hasVideo && newVideoSource === "upload" && !newUploadFile)}
+                >
+                  {isUploading ? "Uploading…" : "Add Training"}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Videos Grid */}
@@ -567,11 +931,17 @@ export default function TrainingPage() {
                 <div className="relative aspect-video bg-muted">
                   {hasVideo ? (
                     <>
-                      <video
-                        src={video.videoUrl}
-                        className="w-full h-full object-cover"
-                        poster="/training-video-thumbnail.jpg"
-                      />
+                      {getVideoThumbnail(video.videoUrl) ? (
+                        <img
+                          src={getVideoThumbnail(video.videoUrl)!}
+                          alt={video.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+                          <Video className="w-10 h-10 text-white/30" />
+                        </div>
+                      )}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button size="icon" variant="secondary" className="rounded-full w-12 h-12">
                           <Play className="w-5 h-5" />
@@ -602,6 +972,10 @@ export default function TrainingPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-sm line-clamp-1">{video.title}</h3>
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{video.description}</p>
+                      {video.certificateId && (() => {
+                        const cert = certificates.find((c) => c.id === video.certificateId)
+                        return cert ? <div className="mt-1.5"><CertificateBadge certificate={cert} /></div> : null
+                      })()}
                     </div>
                     {canEditVideo(video) && (
                       <DropdownMenu>
@@ -720,25 +1094,79 @@ export default function TrainingPage() {
                   </div>
 
                   {editVideoData.hasVideo && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Video URL</Label>
-                        <Input
-                          value={editVideoData.videoUrl}
-                          onChange={(e) => setEditVideoData({ ...editVideoData, videoUrl: e.target.value })}
-                        />
+                    <div className="space-y-3 pl-4 border-l-2 border-primary/20">
+                      {/* Source toggle */}
+                      <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                        <button
+                          type="button"
+                          onClick={() => { setEditVideoSource("url"); setEditUploadFile(null) }}
+                          className={cn("flex-1 flex items-center justify-center gap-2 py-2 font-medium transition-colors", editVideoSource === "url" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                        >
+                          <LinkIcon className="w-3.5 h-3.5" /> YouTube / URL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditVideoSource("upload")}
+                          className={cn("flex-1 flex items-center justify-center gap-2 py-2 font-medium transition-colors", editVideoSource === "upload" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                        >
+                          <Upload className="w-3.5 h-3.5" /> Upload File
+                        </button>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Duration (seconds)</Label>
-                        <Input
-                          type="number"
-                          value={editVideoData.duration}
-                          onChange={(e) =>
-                            setEditVideoData({ ...editVideoData, duration: Number.parseInt(e.target.value) || 0 })
-                          }
-                        />
-                      </div>
-                    </>
+
+                      {editVideoSource === "url" ? (
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label>Video URL</Label>
+                            <Input
+                              value={editVideoData.videoUrl}
+                              onChange={(e) => setEditVideoData({ ...editVideoData, videoUrl: e.target.value })}
+                              placeholder="https://youtube.com/watch?v=... or direct video URL"
+                            />
+                          </div>
+                          {getVideoThumbnail(editVideoData.videoUrl) && (
+                            <img
+                              src={getVideoThumbnail(editVideoData.videoUrl)!}
+                              alt="YouTube thumbnail preview"
+                              className="w-full rounded-lg aspect-video object-cover"
+                            />
+                          )}
+                          <div className="space-y-2">
+                            <Label>Duration (seconds)</Label>
+                            <Input
+                              type="number"
+                              value={editVideoData.duration}
+                              onChange={(e) => setEditVideoData({ ...editVideoData, duration: Number.parseInt(e.target.value) || 0 })}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label>Replace Video File</Label>
+                          <label
+                            htmlFor="edit-video-file"
+                            className="flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                          >
+                            <Upload className="w-6 h-6 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground text-center">
+                              {editUploadFile ? editUploadFile.name : "Click to choose a replacement video"}
+                            </span>
+                            {editUploadFile && (
+                              <span className="text-xs text-muted-foreground">{(editUploadFile.size / 1024 / 1024).toFixed(1)} MB · Duration auto-detected on save</span>
+                            )}
+                            <input
+                              id="edit-video-file"
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => setEditUploadFile(e.target.files?.[0] ?? null)}
+                            />
+                          </label>
+                          {editVideoData.videoUrl && !editUploadFile && (
+                            <p className="text-xs text-muted-foreground">Current: {editVideoData.videoUrl.split("/").pop()}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -781,6 +1209,49 @@ export default function TrainingPage() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Certificate</Label>
+                  <Select value={editVideoData.certificateId} onValueChange={(v) => setEditVideoData({ ...editVideoData, certificateId: v === "none" ? "" : v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {certificates.map((cert) => (
+                        <SelectItem key={cert.id} value={cert.id}>
+                          {cert.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {trainingVideos.filter((v) => v.id !== editVideoData.id).length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Prerequisites (must complete before this module)</Label>
+                    <div className="max-h-40 overflow-y-auto space-y-1 border border-border rounded-md p-2">
+                      {trainingVideos.filter((v) => v.id !== editVideoData.id).map((v) => (
+                        <label key={v.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={editVideoData.prerequisites.includes(v.id)}
+                            onChange={(e) => {
+                              setEditVideoData({
+                                ...editVideoData,
+                                prerequisites: e.target.checked
+                                  ? [...editVideoData.prerequisites, v.id]
+                                  : editVideoData.prerequisites.filter((id) => id !== v.id),
+                              })
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span>{v.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-4 pt-2 border-t">
                   <div className="flex items-center justify-between">
                     <Label>Enable Quiz</Label>
@@ -815,11 +1286,22 @@ export default function TrainingPage() {
                 </div>
               </div>
             )}
+            {uploadError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {uploadError}
+              </div>
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditVideoOpen(false)}>
+              <Button variant="outline" onClick={() => setIsEditVideoOpen(false)} disabled={isUploading}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveEditVideo}>Save Changes</Button>
+              <Button
+                onClick={handleSaveEditVideo}
+                disabled={isUploading || (editVideoData?.hasVideo && editVideoSource === "upload" && !editUploadFile)}
+              >
+                {isUploading ? "Uploading…" : "Save Changes"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
