@@ -12,7 +12,7 @@ import { CheckCircle2, Clock, Play, Lock, FileQuestion, Award, BookOpen, Video, 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { getVideoThumbnail } from "@/lib/utils"
-import { CertificateBadge } from "@/components/dashboard/certificate-badge"
+import { VolunteerBadges } from "@/components/volunteer-badges"
 
 export default function MyTrainingPage() {
   const { user } = useAuth()
@@ -174,18 +174,111 @@ export default function MyTrainingPage() {
           </CardContent>
         </Card>
 
-        {/* Earned Certificates */}
-        {earnedCertificates.length > 0 && (
-          <Card className="border-green-500/20 bg-green-500/5">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Award className="w-5 h-5 text-green-600" />
-                <h3 className="font-semibold text-green-700 dark:text-green-400">Earned Certificates</h3>
+        {/* ── Tier Roadmap strip ── */}
+        {!isLoading && relevantCerts.length > 0 && (
+          <Card className="border-border/50 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-amber-500 via-red-500 to-purple-600" />
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Award className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm">Training Roadmap</h3>
+                </div>
+                <Link href="/dashboard/certificates">
+                  <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-primary">
+                    Full Roadmap <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {earnedCertificates.map((cert) => (
-                  <CertificateBadge key={cert.id} certificate={cert} size="md" />
-                ))}
+
+              {/* Tier progress pills with inline checklist preview */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {relevantCerts.map((cert, idx) => {
+                  const isEarned = earnedIds.has(cert.id)
+                  const certLocked = isCertificateLocked(cert.id, user.id)
+                  const tierMods = relevantVideos.filter((v) => v.certificateId === cert.id)
+                  const done = tierMods.filter((v) => myProgress.some((p) => p.videoId === v.id && p.completed)).length
+                  const pct = tierMods.length > 0 ? Math.round((done / tierMods.length) * 100) : 0
+
+                  return (
+                    <div
+                      key={cert.id}
+                      className={`rounded-lg border p-3 ${certLocked ? "opacity-50 bg-muted/20" : isEarned ? "bg-green-500/5 border-green-500/20" : "bg-card border-border"}`}
+                    >
+                      {/* Tier header */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div
+                          className="w-6 h-6 rounded flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: certLocked ? "var(--muted)" : `${cert.color}20` }}
+                        >
+                          {certLocked ? (
+                            <Lock className="w-3.5 h-3.5 text-muted-foreground/40" />
+                          ) : isEarned ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                          ) : (
+                            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: cert.color }} />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold truncate">{cert.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{done}/{tierMods.length} modules</p>
+                        </div>
+                      </div>
+
+                      {/* Mini progress bar */}
+                      {!certLocked && tierMods.length > 0 && (
+                        <div className="w-full h-1 bg-muted rounded-full overflow-hidden mb-2">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, backgroundColor: cert.color }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Mini checklist — show first 4 modules */}
+                      <div className="space-y-1">
+                        {tierMods.slice(0, 4).map((v) => {
+                          const done = myProgress.some((p) => p.videoId === v.id && p.completed)
+                          const trackMatch = v.description.match(/^Track ([A-Z])/)
+                          const trackTag = trackMatch ? `T${trackMatch[1]}` : null
+                          return (
+                            <div key={v.id} className="flex items-center gap-1.5">
+                              {done ? (
+                                <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                              ) : certLocked ? (
+                                <Lock className="w-3 h-3 text-muted-foreground/30 shrink-0" />
+                              ) : (
+                                <div
+                                  className="w-3 h-3 rounded-full border shrink-0"
+                                  style={{ borderColor: `${cert.color}60` }}
+                                />
+                              )}
+                              {trackTag && !certLocked && (
+                                <span
+                                  className="text-[9px] font-bold px-1 rounded shrink-0"
+                                  style={{ color: cert.color, backgroundColor: `${cert.color}15` }}
+                                >
+                                  {trackTag}
+                                </span>
+                              )}
+                              <span className={`text-[11px] truncate ${done ? "line-through text-muted-foreground" : certLocked ? "text-muted-foreground/50" : ""}`}>
+                                {v.title}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        {tierMods.length > 4 && (
+                          <p className="text-[10px] text-muted-foreground pl-4">
+                            +{tierMods.length - 4} more modules
+                          </p>
+                        )}
+                        {tierMods.length === 0 && (
+                          <p className="text-[11px] text-muted-foreground italic">Coming soon…</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -208,33 +301,6 @@ export default function MyTrainingPage() {
           </div>
         )}
 
-        {/* Training Roadmap */}
-        {!isLoading && relevantCerts.length > 0 && (
-          <Card className="border-border/50">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Award className="w-4 h-4 text-primary" />
-                <h3 className="font-semibold text-sm">Training Roadmap</h3>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {relevantCerts.map((cert, idx) => {
-                  const isEarned = earnedIds.has(cert.id)
-                  const certLocked = isCertificateLocked(cert.id, user.id)
-                  return (
-                    <React.Fragment key={cert.id}>
-                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${isEarned ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400" : certLocked ? "border-border/40 bg-muted/50 text-muted-foreground" : "border-primary/30 bg-primary/5 text-primary"}`}>
-                        {isEarned ? <CheckCircle2 className="w-3 h-3" /> : certLocked ? <Lock className="w-3 h-3" /> : <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: cert.color }} />}
-                        {cert.name}
-                      </div>
-                      {idx < relevantCerts.length - 1 && <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />}
-                    </React.Fragment>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Certificate Groups */}
         {!isLoading && certGroups.map(({ cert, modules }) => {
           const certCompleted = modules.filter((v) => myProgress.some((p) => p.videoId === v.id && p.completed)).length
@@ -249,7 +315,11 @@ export default function MyTrainingPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className={`text-lg font-semibold ${certLocked ? "text-muted-foreground" : ""}`}>{cert.name}</h2>
-                    {isEarned && <CertificateBadge certificate={cert} />}
+                    {isEarned && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Earned
+                      </span>
+                    )}
                     {certLocked && prereqCert && (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border/50 rounded-full px-2 py-0.5">
                         <Lock className="w-3 h-3" /> Requires: {prereqCert.name}

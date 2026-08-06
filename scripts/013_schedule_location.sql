@@ -1,0 +1,3 @@
+-- The service_schedules table already has a 'venue' column.
+-- No migration needed — the app now maps venue <-> location correctly.
+-- This file is kept as a record; do not run it.

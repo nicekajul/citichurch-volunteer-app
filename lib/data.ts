@@ -13,6 +13,7 @@ export interface User {
   phone?: string
   joinDate: string
   status: "active" | "inactive" | "pending"
+  emailConfirmed?: boolean
 }
 
 export interface Team {
@@ -109,7 +110,27 @@ export interface ServiceSchedule {
   date: string
   time?: string
   service: string
+  location?: string
   assignments: ScheduleAssignment[]
+}
+
+export interface VolunteerAvailability {
+  id: string
+  userId: string
+  date: string // YYYY-MM-DD
+  status: "available" | "unavailable"
+  note?: string
+}
+
+export interface AppNotification {
+  id: string
+  userId: string
+  title: string
+  message: string
+  type: "schedule" | "announcement" | "application" | "training" | "info"
+  read: boolean
+  link?: string
+  createdAt: string
 }
 
 export interface MinistryApplication {
@@ -290,132 +311,166 @@ export const initialTeams: Team[] = [
   },
 ]
 
-export const initialTrainingVideos: TrainingVideo[] = [
+// ── Tier 1: Ministry Essentials ────────────────────────────────────────────
+const t1: TrainingVideo[] = [
   {
-    id: "v1",
-    title: "Welcome to Production Ministry",
-    description: "An introduction to our production team and what we do",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 120,
-    teamId: undefined,
-    order: 1,
-    quizEnabled: true,
-    quizRequired: false,
-    passingScore: 70,
-    summary:
-      "This video covers the mission and vision of our Production Ministry, explaining how technical excellence serves to enhance worship and spread the gospel. You'll learn about our core values: excellence, teamwork, and servant leadership.",
-    documents: [], // Added documents array
+    id: "v1", title: "Heart of Production",
+    description: "Ministry vision, welcome, and the purpose behind broadcasting the service.",
+    summary: "Understand why we do what we do. Covers the ministry vision, our role in broadcasting the gospel, and the core values — excellence, teamwork, and servant leadership.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 1,
+    quizEnabled: true, quizRequired: false, passingScore: 70, documents: [],
+    certificateId: "cert-tier1",
   },
   {
-    id: "v2",
-    title: "Safety & Equipment Basics",
-    description: "Essential safety guidelines and equipment handling",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 180,
-    teamId: undefined,
-    order: 2,
-    quizEnabled: true,
-    quizRequired: true,
-    passingScore: 80,
-    summary:
-      "Safety is our top priority. This module covers electrical safety, proper cable management, equipment handling procedures, and emergency protocols. Remember: if you're unsure, always ask a team leader.",
-    documents: [
-      { id: "d1", name: "Safety Guidelines PDF", url: "/documents/safety-guidelines.pdf", type: "pdf", size: "2.4 MB" },
-      { id: "d2", name: "Equipment Checklist", url: "/documents/equipment-checklist.pdf", type: "pdf", size: "156 KB" },
-    ],
+    id: "v2", title: "Volunteer Handbook",
+    description: "Dress code, call times, and general expectations for all Production Ministry volunteers.",
+    summary: "Everything you need to know as a new volunteer: dress code, call time expectations, communication protocols, and what a typical service day looks like.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 2,
+    quizEnabled: true, quizRequired: true, passingScore: 80, documents: [],
+    certificateId: "cert-tier1",
   },
   {
-    id: "v3",
-    title: "Sound Mixing Fundamentals",
-    description: "Learn the basics of live sound mixing",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 300,
-    teamId: "sounds",
-    order: 1,
-    quizEnabled: true,
-    quizRequired: true,
-    passingScore: 70,
-    summary:
-      "Understanding gain structure, EQ basics, and mixing for clarity. This foundational course will prepare you to assist with sound during services.",
-    documents: [],
+    id: "v3", title: "Safety & Emergency Protocol",
+    description: "Basic safety, fire extinguisher locations, evacuation plans, and equipment safety guidelines.",
+    summary: "Your safety is our top priority. Learn emergency procedures, evacuation routes, fire extinguisher locations, electrical safety, and proper equipment handling.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 3,
+    quizEnabled: true, quizRequired: true, passingScore: 80, documents: [],
+    certificateId: "cert-tier1",
   },
   {
-    id: "v4",
-    title: "Lighting Console Operation",
-    description: "Operating the lighting console effectively",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 240,
-    teamId: "lights",
-    order: 1,
-    quizEnabled: true,
-    quizRequired: true,
-    passingScore: 70,
-    summary:
-      "Learn to navigate the lighting console, create scenes, and execute cues during services. Includes hands-on exercises with common lighting scenarios.",
-    documents: [],
-  },
-  {
-    id: "v5",
-    title: "ProPresenter Basics",
-    description: "Using ProPresenter for service presentations",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 200,
-    teamId: "media",
-    order: 1,
-    quizEnabled: true,
-    quizRequired: false,
-    passingScore: 70,
-    summary:
-      "Master the essentials of ProPresenter: creating slides, managing playlists, triggering videos, and handling live service flow.",
-    documents: [],
-  },
-  {
-    id: "v6",
-    title: "Live Streaming Setup",
-    description: "Setting up and managing live streams",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    duration: 280,
-    teamId: "broadcast",
-    order: 1,
-    quizEnabled: true,
-    quizRequired: true,
-    passingScore: 75,
-    summary:
-      "Complete guide to our streaming setup including encoder settings, platform management, and troubleshooting common issues.",
-    documents: [],
-  },
-  {
-    id: "v7",
-    title: "Volunteer Handbook",
-    description: "Essential reading material for all new volunteers",
-    videoUrl: undefined, // No video - document only
-    duration: 0,
-    teamId: undefined,
-    order: 0,
-    quizEnabled: true,
-    quizRequired: true,
-    passingScore: 80,
-    summary:
-      "This handbook contains all the essential information about serving in the Production Ministry. Please read through all documents before your first service.",
-    documents: [
-      {
-        id: "d3",
-        name: "Volunteer Handbook 2024",
-        url: "/documents/volunteer-handbook.pdf",
-        type: "pdf",
-        size: "5.2 MB",
-      },
-      { id: "d4", name: "Code of Conduct", url: "/documents/code-of-conduct.pdf", type: "pdf", size: "320 KB" },
-      {
-        id: "d5",
-        name: "Ministry Values Presentation",
-        url: "/documents/ministry-values.pptx",
-        type: "ppt",
-        size: "8.1 MB",
-      },
-    ],
+    id: "v4", title: "Studio Etiquette & Comms",
+    description: "How to use headsets (Clear-Com, Hollyland, etc.), radio discipline, and keeping quiet in the booth.",
+    summary: "Master in-service communication. Learn headset operation, radio discipline, intercom etiquette, and how to stay professional during a live broadcast.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 4,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier1",
   },
 ]
+
+// ── Tier 2: Broadcast Specialist ───────────────────────────────────────────
+const t2: TrainingVideo[] = [
+  // Track A: Camera Operator
+  {
+    id: "v5", title: "Gear Care & Handling",
+    description: "Track A: Camera Operator — Proper lens cleaning, tripod balancing, and cable coiling (over-under method).",
+    summary: "Learn how to properly care for and handle camera equipment. Covers lens cleaning, tripod balancing, and the over-under cable coiling method.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 1,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v6", title: "Setup & Strike",
+    description: "Track A: Camera Operator — Properly setting up and tearing down the camera station.",
+    summary: "The right way to build and break down a camera station before and after service. Covers cable routing, power sequences, and post-service storage.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 2,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v7", title: "Basic Framing & Composition",
+    description: "Track A: Camera Operator — Rule of thirds, headroom, and matching shots with other cameras.",
+    summary: "Learn the fundamental principles of camera framing for live worship. Covers rule of thirds, headroom, lead space, and shot matching.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 3,
+    quizEnabled: true, quizRequired: false, passingScore: 70, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v8", title: "Navigating Call Shots",
+    description: "Track A: Camera Operator — Understanding the Director's cues (pan, tilt, zoom, hold, standby).",
+    summary: "Master the language of the control room. Learn to respond instantly to director cues: pan, tilt, zoom, hold, standby, and ready.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 4,
+    quizEnabled: true, quizRequired: true, passingScore: 80, documents: [],
+    certificateId: "cert-tier2",
+  },
+  // Track B: Control Room & Switching
+  {
+    id: "v9", title: "ATEM Basics",
+    description: "Track B: Control Room & Switching — Switcher interface, cutting vs. transitioning, and basic keying (lower thirds/lyrics).",
+    summary: "Get familiar with the ATEM switcher. Learn the interface layout, the difference between cuts and transitions, and how to key in lower thirds and lyrics.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 5,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v10", title: "OBS & Encoding Basics",
+    description: "Track B: Control Room & Switching — Starting/stopping the stream, checking audio levels, and managing scenes.",
+    summary: "Master OBS for live streaming. Learn scene management, audio monitoring, stream health indicators, and how to safely start and stop a live broadcast.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 6,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v11", title: "Broadcast Audio 101",
+    description: "Track B: Control Room & Switching — House sound vs. broadcast sound, monitoring levels, and preventing clipping.",
+    summary: "Understand audio in the broadcast context. Learn the difference between the house mix and the broadcast mix, how to monitor levels, and how to fix clipping.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 7,
+    quizEnabled: true, quizRequired: false, passingScore: 70, documents: [],
+    certificateId: "cert-tier2",
+  },
+  // Track C: IT & Support
+  {
+    id: "v12", title: "Network Fundamentals",
+    description: "Track C: IT & Support — Internet troubleshooting, understanding bitrate, and monitoring stream health.",
+    summary: "Learn to keep the stream alive. Covers network troubleshooting basics, bitrate requirements, and reading stream health dashboards.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 8,
+    quizEnabled: true, quizRequired: false, passingScore: 70, documents: [],
+    certificateId: "cert-tier2",
+  },
+  {
+    id: "v13", title: "Signal Flow 101",
+    description: "Track C: IT & Support — How video travels from the camera to the switcher to the internet.",
+    summary: "Trace the signal from camera to screen. Understand how video moves through the full production chain: camera → switcher → encoder → CDN → viewer.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 9,
+    quizEnabled: true, quizRequired: true, passingScore: 75, documents: [],
+    certificateId: "cert-tier2",
+  },
+]
+
+// ── Tier 3: Production Leader ──────────────────────────────────────────────
+const t3: TrainingVideo[] = [
+  {
+    id: "v14", title: "Service Director",
+    description: "Calling shots, pacing the service, and communicating with the worship leader, pastor, and camera team.",
+    summary: "Step into the director's chair. Learn to call shots confidently, pace the service, and maintain clear communication with worship leaders, pastors, and camera operators.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 1,
+    quizEnabled: true, quizRequired: true, passingScore: 85, documents: [],
+    certificateId: "cert-tier3",
+  },
+  {
+    id: "v15", title: "Technical Director (TD)",
+    description: "Advanced ATEM/OBS routing, multi-cam live mixing, macros, and handling complex transitions.",
+    summary: "Master the technical side of directing. Covers advanced ATEM routing, multi-camera switching, macro programming, and managing complex live transitions.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 2,
+    quizEnabled: true, quizRequired: true, passingScore: 85, documents: [],
+    certificateId: "cert-tier3",
+  },
+  {
+    id: "v16", title: "Dynamic Cinematography",
+    description: "Advanced framing for live worship — depth of field, capturing emotion, and safe dynamic movement.",
+    summary: "Elevate your camera work. Learn advanced composition for live worship: depth of field, emotional storytelling, and controlled dynamic movement.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 3,
+    quizEnabled: true, quizRequired: false, passingScore: 75, documents: [],
+    certificateId: "cert-tier3",
+  },
+  {
+    id: "v17", title: "Live Troubleshooting",
+    description: "Handling a dropped stream, frozen camera, or missing audio during a live broadcast without panicking.",
+    summary: "Stay calm and fix it live. Learn proven protocols for common broadcast emergencies: dropped streams, frozen cameras, and lost audio.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 4,
+    quizEnabled: true, quizRequired: true, passingScore: 85, documents: [],
+    certificateId: "cert-tier3",
+  },
+  {
+    id: "v18", title: "Ministry Mentor",
+    description: "Training for volunteers ready to shadow and teach Tier 1 and Tier 2 volunteers.",
+    summary: "Give back by teaching others. Prepares experienced volunteers to mentor newer members, lead training sessions, and build a culture of excellence.",
+    videoUrl: undefined, duration: 0, teamId: undefined, order: 5,
+    quizEnabled: true, quizRequired: false, passingScore: 75, documents: [],
+    certificateId: "cert-tier3",
+  },
+]
+
+export const initialTrainingVideos: TrainingVideo[] = [...t1, ...t2, ...t3]
 
 export const initialQuizzes: Quiz[] = [
   {

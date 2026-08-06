@@ -5,8 +5,8 @@ import { createClient } from "./supabase/client"
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js"
 
 // Re-export types from data.ts for compatibility
-export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication } from "./data"
-import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate } from "./data"
+export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication, AppNotification, VolunteerAvailability } from "./data"
+import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate, AppNotification, VolunteerAvailability } from "./data"
 
 interface DataContextType {
   users: User[]
@@ -18,6 +18,9 @@ interface DataContextType {
   serviceSchedules: ServiceSchedule[]
   ministryApplications: MinistryApplication[]
   certificates: Certificate[]
+  notifications: AppNotification[]
+  availability: VolunteerAvailability[]
+  unreadCount: number
   isLoading: boolean
   error: string | null
 
@@ -30,6 +33,10 @@ interface DataContextType {
   refreshSchedules: () => Promise<void>
   refreshApplications: () => Promise<void>
   refreshCertificates: () => Promise<void>
+  refreshNotifications: () => Promise<void>
+  refreshAvailability: (userId?: string) => Promise<void>
+  markNotificationRead: (id: string) => Promise<void>
+  markAllNotificationsRead: () => Promise<void>
   addCertificate: (cert: Omit<Certificate, "id">) => Promise<void>
   updateCertificate: (id: string, updates: Partial<Certificate>) => Promise<void>
   deleteCertificate: (id: string) => Promise<void>
@@ -46,6 +53,7 @@ interface DataContextType {
   updateTeam: (id: string, updates: Partial<Team>) => Promise<void>
   deleteTeam: (id: string) => Promise<void>
   assignUserToTeam: (userId: string, teamId: string) => Promise<void>
+  assignTeamLeader: (userId: string, teamId: string) => Promise<void>
 
   // Training management
   addTrainingVideo: (video: Omit<TrainingVideo, "id">) => Promise<void>
@@ -73,11 +81,17 @@ interface DataContextType {
   submitMinistryApplication: (data: { teamId: string; motivation: string; experience: string; availability: string[] }) => Promise<void>
   reviewApplication: (id: string, status: "approved" | "rejected", notes: string) => Promise<void>
 
+  // Availability
+  setMyAvailability: (entries: { date: string; status: "available" | "unavailable" }[]) => Promise<void>
+  clearMyAvailability: (date: string) => Promise<void>
+
   // Helpers
   getTeamMembers: (teamId: string) => User[]
   getUserProgress: (userId: string) => TrainingProgress[]
   getVideoQuiz: (videoId: string) => Quiz | undefined
   getTeamLeader: (teamId: string) => User | undefined
+  getAvailabilityForUser: (userId: string) => VolunteerAvailability[]
+  getAvailabilityForDate: (userId: string, date: string) => VolunteerAvailability | undefined
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -96,6 +110,7 @@ function mapProfile(profile: any): User {
     phone: profile.phone || undefined,
     joinDate: profile.join_date || profile.created_at,
     status: (profile.status as "active" | "inactive" | "pending") || "active",
+    emailConfirmed: profile.email_confirmed ?? false,
   }
 }
 
@@ -116,7 +131,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   // createClient() returns the same singleton instance every call.
   // It throws if env vars are missing, which surfaces a clear error in dev.
   const supabase = createClient()
-  
+
   const [users, setUsers] = useState<User[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [trainingVideos, setTrainingVideos] = useState<TrainingVideo[]>([])
@@ -126,6 +141,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const [serviceSchedules, setServiceSchedules] = useState<ServiceSchedule[]>([])
   const [ministryApplications, setMinistryApplications] = useState<MinistryApplication[]>([])
   const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [availability, setAvailability] = useState<VolunteerAvailability[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -312,8 +329,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
         const dt = new Date(s.service_date)
         const date = s.service_date.slice(0, 10)
-        const hours = dt.getHours().toString().padStart(2, "0")
-        const minutes = dt.getMinutes().toString().padStart(2, "0")
+        // Use UTC values — the time was stored without timezone so Supabase treats it
+        // as UTC. getUTCHours/Minutes reads it back as-stored, avoiding local-offset shift.
+        const hours = dt.getUTCHours().toString().padStart(2, "0")
+        const minutes = dt.getUTCMinutes().toString().padStart(2, "0")
         const time = `${hours}:${minutes}`
 
         return {
@@ -321,6 +340,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
           date,
           time,
           service: s.service_name,
+          location: s.venue || undefined,
           assignments: scheduleAssignments,
         }
       })
@@ -330,6 +350,93 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       console.error("Error fetching schedules:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch schedules")
     }
+  }
+
+  // Fetch volunteer availability — optionally scoped to a single user (non-admin)
+  const refreshAvailability = async (userId?: string) => {
+    try {
+      let query = supabase.from("volunteer_availability").select("*")
+      if (userId) query = query.eq("user_id", userId)
+
+      const { data, error } = await query
+
+      if (error) throw new Error(error.message)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapped: VolunteerAvailability[] = (data || []).map((a: any) => ({
+        id: a.id,
+        userId: a.user_id,
+        date: a.date,
+        status: a.status as "available" | "unavailable",
+        note: a.note || undefined,
+      }))
+
+      setAvailability(mapped)
+    } catch (err) {
+      console.error("Error fetching availability:", err)
+    }
+  }
+
+  // ── Notification helpers ──────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function mapNotification(n: any): AppNotification {
+    return {
+      id: n.id,
+      userId: n.user_id,
+      title: n.title,
+      message: n.message,
+      type: n.type as AppNotification["type"],
+      read: n.read,
+      link: n.link || undefined,
+      createdAt: n.created_at,
+    }
+  }
+
+  const refreshNotifications = async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const userId = sessionData?.session?.user?.id
+      if (!userId) return
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+      if (error) throw new Error(error.message)
+      setNotifications((data || []).map(mapNotification))
+    } catch (err) {
+      console.error("Error fetching notifications:", err)
+    }
+  }
+
+  const markNotificationRead = async (id: string) => {
+    const { error } = await supabase.from("notifications").update({ read: true }).eq("id", id)
+    if (error) throw new Error(error.message)
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+  }
+
+  const markAllNotificationsRead = async () => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
+    if (!userId) return
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("user_id", userId)
+      .eq("read", false)
+    if (error) throw new Error(error.message)
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+  }
+
+  // Internal: create one or more notifications (fire-and-forget, errors are logged not thrown)
+  const pushNotifications = async (
+    rows: { user_id: string; title: string; message: string; type: string; link?: string }[]
+  ) => {
+    if (rows.length === 0) return
+    const { error } = await supabase.from("notifications").insert(rows)
+    if (error) console.error("Failed to create notifications:", error.message)
   }
 
   // Only load data when an authenticated session exists
@@ -346,11 +453,11 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       const myGeneration = ++generation
       setIsLoading(true)
 
-      // For non-admin users, scope progress to their own records only.
-      // Admins need all progress for the overview dashboard.
+      // Volunteers only see their own progress. Admins and leaders need all
+      // team members' progress to power badge/roster views.
       const role: string = session?.user?.user_metadata?.role ?? ""
       const userId: string | undefined =
-        role !== "admin" ? session?.user?.id : undefined
+        role === "volunteer" ? session?.user?.id : undefined
 
       await Promise.all([
         refreshUsers(),
@@ -361,6 +468,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshSchedules(),
         refreshApplications(),
         refreshCertificates(),
+        refreshNotifications(),
+        refreshAvailability(userId),
       ])
 
       // Only mark loading complete if no newer load has started since we began.
@@ -377,6 +486,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       setAnnouncements([])
       setServiceSchedules([])
       setMinistryApplications([])
+      setNotifications([])
+      setAvailability([])
       setIsLoading(false)
     }
 
@@ -392,21 +503,64 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
     // Listen for subsequent auth changes (login / logout / user switch)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+      // Deferred via setTimeout: calling another Supabase method (loadAllData's
+      // queries, or getSession() below) synchronously inside this callback
+      // deadlocks, because onAuthStateChange fires while GoTrue's internal
+      // session lock is still held. Escaping to a new task lets that lock
+      // release first — this is Supabase's documented workaround.
       if (event === "SIGNED_IN" && session) {
-        loadAllData(session)
+        setTimeout(() => loadAllData(session), 0)
       } else if (event === "SIGNED_OUT") {
         // Verify no new session exists before wiping state. A stale SIGNED_OUT
         // from a previous signOut() can arrive AFTER a new user has already
         // signed in if logout() wasn't awaited before navigating.
-        supabase.auth.getSession().then(({ data: { session: current } }: { data: { session: Session | null } }) => {
-          if (!current) clearData()
-        })
+        setTimeout(() => {
+          supabase.auth.getSession().then(({ data: { session: current } }: { data: { session: Session | null } }) => {
+            if (!current) clearData()
+          })
+        }, 0)
       }
+    })
+
+    // Realtime: live notifications + profile list refresh for admins
+    let realtimeChannel: ReturnType<typeof supabase.channel> | null = null
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
+      if (!session?.user?.id || !mounted) return
+      const role: string = session.user.user_metadata?.role ?? ""
+
+      const channel = supabase.channel("app-realtime")
+
+      // All users: receive their own new notifications in real time
+      channel.on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: any) => {
+          if (mounted) setNotifications((prev) => [mapNotification(payload.new), ...prev])
+        }
+      )
+
+      // Admins: refresh user list when a new profile is created (new volunteer registered)
+      if (role === "admin") {
+        channel.on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "profiles" },
+          () => { if (mounted) refreshUsers() }
+        )
+      }
+
+      realtimeChannel = channel.subscribe()
     })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
+      realtimeChannel?.unsubscribe()
     }
   }, [])
 
@@ -445,7 +599,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       })
       .eq("id", id)
 
-    if (error) throw error
+    if (error) throw new Error(error.message)
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, ...updates } : u))
     )
@@ -458,7 +612,50 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   }
 
   const assignUserToTeam = async (userId: string, teamId: string) => {
+    const volunteer = users.find((u) => u.id === userId)
     await updateUser(userId, { teamId })
+
+    const team = teams.find((t) => t.id === teamId)
+    const notifs: Parameters<typeof pushNotifications>[0] = []
+
+    // Notify the volunteer they've been assigned
+    if (volunteer && team) {
+      notifs.push({
+        user_id: userId,
+        title: `You've been added to ${team.name}`,
+        message: `Welcome to the ${team.name}! You now have access to your team's training modules and service schedule.`,
+        type: "info",
+        link: "/dashboard",
+      })
+    }
+
+    // Notify the team leader
+    const leader = team?.leaderId ? users.find((u) => u.id === team.leaderId) : null
+    if (leader && volunteer && team) {
+      notifs.push({
+        user_id: leader.id,
+        title: "New volunteer assigned to your team",
+        message: `${volunteer.name} has been assigned to ${team.name}.`,
+        type: "info",
+        link: "/dashboard/volunteers",
+      })
+    }
+
+    await pushNotifications(notifs)
+  }
+
+  const assignTeamLeader = async (userId: string, teamId: string) => {
+    await updateUser(userId, { role: "leader", teamId })
+    await updateTeam(teamId, { leaderId: userId })
+
+    const team = teams.find((t) => t.id === teamId)
+    await pushNotifications([{
+      user_id: userId,
+      title: "You've been appointed as Team Leader",
+      message: `Congratulations! You are now the Team Leader for ${team?.name || "your team"}.`,
+      type: "info",
+      link: "/dashboard",
+    }])
   }
 
   // Team management
@@ -622,6 +819,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     if (error) throw error
 
     // Update local state optimistically
+    const wasAlreadyCompleted = trainingProgress.find(
+      (p) => p.userId === userId && p.videoId === videoId
+    )?.completed ?? false
+
     setTrainingProgress((prev) => {
       const existing = prev.find((p) => p.userId === userId && p.videoId === videoId)
       const updated: TrainingProgress = {
@@ -640,13 +841,36 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, updated]
     })
+
+    // Notify the team leader when a volunteer completes a module (first time only)
+    if (updates.completed && !wasAlreadyCompleted) {
+      const volunteer = users.find((u) => u.id === userId)
+      const module = trainingVideos.find((v) => v.id === videoId)
+      if (volunteer?.teamId) {
+        const team = teams.find((t) => t.id === volunteer.teamId)
+        const leader = team?.leaderId ? users.find((u) => u.id === team.leaderId) : null
+        if (leader && module) {
+          await pushNotifications([{
+            user_id: leader.id,
+            title: `${volunteer.name} completed a training module`,
+            message: `"${module.title}" has been completed and is awaiting your approval.`,
+            type: "training",
+            link: "/dashboard",
+          }])
+        }
+      }
+    }
   }
 
   const approveProgress = async (progressId: string, approverId: string) => {
-    // Approval logic not in current schema, but we can update status
     const { data: sessionData } = await supabase.auth.getSession()
     const currentUserId = sessionData?.session?.user?.id
     const currentRole: string = sessionData?.session?.user?.user_metadata?.role ?? ""
+
+    // Look up progress record before updating so we can notify the volunteer
+    const progressRecord = trainingProgress.find((p) => p.id === progressId)
+    const volunteer = progressRecord ? users.find((u) => u.id === progressRecord.userId) : null
+    const module = progressRecord ? trainingVideos.find((v) => v.id === progressRecord.videoId) : null
 
     const { error } = await supabase
       .from("training_progress")
@@ -654,9 +878,18 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       .eq("id", progressId)
 
     if (error) throw error
-    // Scope the refresh to the current user's records if they are not an admin,
-    // matching the same RLS-safe scoping used on initial load.
     await refreshProgress(currentRole !== "admin" ? currentUserId : undefined)
+
+    // Notify the volunteer their training was approved
+    if (volunteer && module) {
+      await pushNotifications([{
+        user_id: volunteer.id,
+        title: "Training approved!",
+        message: `Your completion of "${module.title}" has been approved by your team leader.`,
+        type: "training",
+        link: "/dashboard/training",
+      }])
+    }
   }
 
   // Announcements
@@ -684,6 +917,23 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       priority: data.priority as "low" | "normal" | "high",
     }
     setAnnouncements((prev) => [mapped, ...prev])
+
+    // Notify targeted users (by team or everyone)
+    const targets = announcement.teamId
+      ? users.filter((u) => u.teamId === announcement.teamId)
+      : users
+    const preview = announcement.content.length > 80
+      ? announcement.content.slice(0, 80) + "…"
+      : announcement.content
+    await pushNotifications(
+      targets.map((u) => ({
+        user_id: u.id,
+        title: announcement.title,
+        message: preview,
+        type: "announcement",
+        link: "/dashboard/announcements",
+      }))
+    )
   }
 
   const deleteAnnouncement = async (id: string) => {
@@ -702,11 +952,12 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       .insert({
         service_date: serviceDateTime,
         service_name: schedule.service,
+        ...(schedule.location ? { venue: schedule.location } : {}),
       })
       .select()
       .single()
 
-    if (error) throw error
+    if (error) throw new Error(error.message)
 
     // Add assignments
     if (data && schedule.assignments.length > 0) {
@@ -716,6 +967,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
           user_id: a.userId,
           team_id: a.teamId,
           role: a.role,
+          status: a.status ?? "assigned",
         }))
       )
 
@@ -723,6 +975,20 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
 
     await refreshSchedules()
+
+    // Notify each assigned volunteer/leader
+    if (schedule.assignments.length > 0) {
+      const dateLabel = schedule.date
+      await pushNotifications(
+        schedule.assignments.map((a) => ({
+          user_id: a.userId,
+          title: "You've been scheduled",
+          message: `You're assigned to "${schedule.service}" on ${dateLabel} as ${a.role}.`,
+          type: "schedule",
+          link: "/dashboard/schedule",
+        }))
+      )
+    }
   }
 
   const updateServiceSchedule = async (id: string, updates: Partial<ServiceSchedule>) => {
@@ -734,8 +1000,9 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase
       .from("service_schedules")
       .update({
-        service_date: serviceDateTime,
-        service_name: updates.service,
+        ...(serviceDateTime && { service_date: serviceDateTime }),
+        ...(updates.service !== undefined && { service_name: updates.service }),
+        ...(updates.location !== undefined && { venue: updates.location || null }),
       })
       .eq("id", id)
 
@@ -813,6 +1080,68 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         }
       })
     )
+
+    // Notify the team leader of the volunteer's response
+    const schedule = serviceSchedules.find((s) => s.id === scheduleId)
+    const volunteer = users.find((u) => u.id === userId)
+    if (schedule && volunteer) {
+      const assignment = schedule.assignments.find((a) => a.userId === userId)
+      if (assignment) {
+        const team = teams.find((t) => t.id === assignment.teamId)
+        const leader = team?.leaderId ? users.find((u) => u.id === team.leaderId) : null
+        if (leader) {
+          await pushNotifications([{
+            user_id: leader.id,
+            title: response === "confirmed"
+              ? `${volunteer.name} confirmed attendance`
+              : `${volunteer.name} declined a service`,
+            message: response === "confirmed"
+              ? `${volunteer.name} confirmed for "${schedule.service}" on ${schedule.date}.`
+              : `${volunteer.name} declined "${schedule.service}" on ${schedule.date}.${reason ? ` Reason: ${reason}` : ""}`,
+            type: "schedule",
+            link: "/dashboard/schedule",
+          }])
+        }
+      }
+    }
+  }
+
+  // Availability
+  const setMyAvailability = async (entries: { date: string; status: "available" | "unavailable" }[]) => {
+    if (entries.length === 0) return
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) throw new Error("Not authenticated")
+
+    const { error } = await supabase.from("volunteer_availability").upsert(
+      entries.map((e) => ({ user_id: userId, date: e.date, status: e.status, updated_at: new Date().toISOString() })),
+      { onConflict: "user_id,date" },
+    )
+    if (error) throw new Error(error.message)
+
+    setAvailability((prev) => {
+      const untouched = prev.filter((a) => !(a.userId === userId && entries.some((e) => e.date === a.date)))
+      const updated: VolunteerAvailability[] = entries.map((e) => {
+        const existing = prev.find((a) => a.userId === userId && a.date === e.date)
+        return { id: existing?.id ?? `${userId}-${e.date}`, userId, date: e.date, status: e.status }
+      })
+      return [...untouched, ...updated]
+    })
+  }
+
+  const clearMyAvailability = async (date: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) throw new Error("Not authenticated")
+
+    const { error } = await supabase
+      .from("volunteer_availability")
+      .delete()
+      .eq("user_id", userId)
+      .eq("date", date)
+    if (error) throw new Error(error.message)
+
+    setAvailability((prev) => prev.filter((a) => !(a.userId === userId && a.date === date)))
   }
 
   // Ministry Applications
@@ -983,6 +1312,18 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
 
     await refreshApplications()
+
+    // Notify the applicant of the decision
+    const teamName = teams.find((t) => t.id === application.teamId)?.name || "the team"
+    await pushNotifications([{
+      user_id: application.applicantId,
+      title: status === "approved" ? "Application Approved! 🎉" : "Application Update",
+      message: status === "approved"
+        ? `Welcome to ${teamName}! Your application has been approved. You can now access your team dashboard.`
+        : `Your application for ${teamName} was not approved this time.${notes ? ` Note: ${notes}` : ""}`,
+      type: "application",
+      link: "/dashboard",
+    }])
   }
 
   // Helper functions (client-side filtering)
@@ -1006,6 +1347,14 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     return undefined
   }
 
+  const getAvailabilityForUser = (userId: string) => {
+    return availability.filter((a) => a.userId === userId)
+  }
+
+  const getAvailabilityForDate = (userId: string, date: string) => {
+    return availability.find((a) => a.userId === userId && a.date === date)
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -1018,6 +1367,9 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         serviceSchedules,
         ministryApplications,
         certificates,
+        notifications,
+        availability,
+        unreadCount: notifications.filter((n) => !n.read).length,
         isLoading,
         error,
         refreshUsers,
@@ -1028,6 +1380,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshSchedules,
         refreshApplications,
         refreshCertificates,
+        refreshNotifications,
+        refreshAvailability,
+        markNotificationRead,
+        markAllNotificationsRead,
         addCertificate,
         updateCertificate,
         deleteCertificate,
@@ -1040,6 +1396,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         updateTeam,
         deleteTeam,
         assignUserToTeam,
+        assignTeamLeader,
         addTrainingVideo,
         updateTrainingVideo,
         deleteTrainingVideo,
@@ -1054,10 +1411,14 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         respondToSchedule,
         submitMinistryApplication,
         reviewApplication,
+        setMyAvailability,
+        clearMyAvailability,
         getTeamMembers,
         getUserProgress,
         getVideoQuiz,
         getTeamLeader,
+        getAvailabilityForUser,
+        getAvailabilityForDate,
       }}
     >
       {children}

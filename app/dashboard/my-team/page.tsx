@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User, Award } from "lucide-react"
-import { CertificateBadge } from "@/components/dashboard/certificate-badge"
+import { VolunteerBadges } from "@/components/volunteer-badges"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 
@@ -127,11 +127,7 @@ export default function MyTeamPage() {
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{member.email}</p>
-                      {(() => {
-                        const earned = getEarnedCertificates(member.id)
-                        if (!earned.length) return null
-                        return <div className="flex flex-wrap gap-1 mt-1">{earned.map((cert) => <CertificateBadge key={cert.id} certificate={cert} />)}</div>
-                      })()}
+                      <div className="mt-1.5"><VolunteerBadges userId={member.id} /></div>
                     </div>
                   </div>
 

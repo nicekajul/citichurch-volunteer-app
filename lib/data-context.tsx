@@ -16,4 +16,5 @@ export {
   type Announcement,
   type ServiceSchedule,
   type ScheduleAssignment,
+  type AppNotification,
 } from "./supabase-data-context"

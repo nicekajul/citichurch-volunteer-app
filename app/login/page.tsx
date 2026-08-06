@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, getRoleRedirect } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Church, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, AlertCircle } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -19,8 +19,21 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  const [showDemo, setShowDemo] = useState(false)
+
   const { login } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault()
+        setShowDemo((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,11 +63,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6">
         {/* Logo Section */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <Church className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Citichurch</h1>
-          <p className="text-muted-foreground">Production Ministry Portal</p>
+          <img
+            src="/logo-citichurch.png"
+            alt="Citichurch"
+            className="mx-auto h-12 w-auto object-contain dark:invert-0 invert mb-2"
+          />
+          <p className="text-muted-foreground">Production Ministry Hub</p>
         </div>
 
         {/* Login Card */}
@@ -123,39 +137,41 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        {/* Demo Credentials */}
-        <Card className="border-border/50 bg-card/50">
-          <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Demo Credentials</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/setup-demo")}
-              className="text-xs h-7 px-2"
-            >
-              Setup Demo Users
-            </Button>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2">
-              {demoCredentials.map((cred) => (
-                <button
-                  key={cred.role}
-                  onClick={() => {
-                    setEmail(cred.email)
-                    setPassword(cred.password)
-                  }}
-                  className="w-full flex flex-col items-start p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm gap-1"
-                >
-                  <span className="font-medium">{cred.role}</span>
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {cred.email}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Demo Credentials — hidden, toggle with Ctrl+Shift+D */}
+        {showDemo && (
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Demo Credentials</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/setup-demo")}
+                className="text-xs h-7 px-2"
+              >
+                Setup Demo Users
+              </Button>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-2">
+                {demoCredentials.map((cred) => (
+                  <button
+                    key={cred.role}
+                    onClick={() => {
+                      setEmail(cred.email)
+                      setPassword(cred.password)
+                    }}
+                    className="w-full flex flex-col items-start p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm gap-1"
+                  >
+                    <span className="font-medium">{cred.role}</span>
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {cred.email}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

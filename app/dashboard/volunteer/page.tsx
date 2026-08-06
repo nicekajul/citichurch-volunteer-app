@@ -36,6 +36,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { VolunteerBadgesPanel } from "@/components/volunteer-badges"
 
 export default function VolunteerDashboard() {
   const { user } = useAuth()
@@ -264,6 +265,9 @@ export default function VolunteerDashboard() {
           }
           return null
         })()}
+
+        {/* Tier Badges */}
+        <VolunteerBadgesPanel userId={user.id} />
 
         {/* Progress Banner */}
         <Card className="border-border/50 bg-gradient-to-r from-primary/5 to-transparent">

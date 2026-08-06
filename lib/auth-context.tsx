@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for subsequent auth changes (sign in, sign out, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
@@ -94,15 +94,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         if (isFetchingRef.current) return
         isFetchingRef.current = true
-        try {
-          const profileData = await fetchProfile(session.user.id)
-          if (profileData) {
-            setProfile(profileData)
-            setUser({ ...profileData, supabase_user: session.user })
+        // Deferred via setTimeout: calling another Supabase method (like the
+        // profiles query in fetchProfile) synchronously inside this callback
+        // deadlocks, because onAuthStateChange fires while GoTrue's internal
+        // session lock is still held. Escaping to a new task lets that lock
+        // release first — this is Supabase's documented workaround.
+        setTimeout(async () => {
+          try {
+            const profileData = await fetchProfile(session.user.id)
+            if (profileData) {
+              setProfile(profileData)
+              setUser({ ...profileData, supabase_user: session.user })
+            }
+          } finally {
+            isFetchingRef.current = false
           }
-        } finally {
-          isFetchingRef.current = false
-        }
+        }, 0)
       }
       // TOKEN_REFRESHED: session is still valid, no need to re-fetch profile
     })

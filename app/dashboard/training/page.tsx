@@ -42,7 +42,6 @@ import {
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { TrainingDocument } from "@/lib/data"
-import { CertificateBadge } from "@/components/dashboard/certificate-badge"
 import type { Certificate } from "@/lib/data"
 import { cn, getVideoThumbnail } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -974,7 +973,14 @@ export default function TrainingPage() {
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{video.description}</p>
                       {video.certificateId && (() => {
                         const cert = certificates.find((c) => c.id === video.certificateId)
-                        return cert ? <div className="mt-1.5"><CertificateBadge certificate={cert} /></div> : null
+                        return cert ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1.5"
+                            style={{ color: cert.color, backgroundColor: `${cert.color}18` }}
+                          >
+                            {cert.name}
+                          </span>
+                        ) : null
                       })()}
                     </div>
                     {canEditVideo(video) && (

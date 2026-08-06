@@ -25,6 +25,8 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  UserX,
+  MailWarning,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -42,7 +44,10 @@ export default function AdminDashboard() {
 
   const volunteers = users.filter((u) => u.role === "volunteer" || u.role === "leader")
   const activeVolunteers = volunteers.filter((u) => u.status === "active")
-  const pendingVolunteers = volunteers.filter((u) => u.status === "pending")
+  const pendingConfirmation = volunteers.filter((u) => !u.emailConfirmed)
+  const pendingActivation = volunteers.filter((u) => u.emailConfirmed && u.status === "pending")
+  const pendingVolunteers = [...pendingConfirmation, ...pendingActivation]
+  const unassignedVolunteers = users.filter((u) => u.role === "volunteer" && !u.teamId)
 
   const completedTrainings = trainingProgress.filter((p) => p.completed).length
   const totalAssignedTrainings = trainingProgress.length
@@ -110,6 +115,51 @@ export default function AdminDashboard() {
           />
         </div>
 
+        {/* Unassigned Volunteers Alert */}
+        {unassignedVolunteers.length > 0 && (
+          <Card className="border-red-500/40 bg-red-500/5">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-red-500/10">
+                  <UserX className="w-5 h-5 text-red-500" />
+                </div>
+                <div>
+                  <CardTitle className="text-base text-red-500">
+                    {unassignedVolunteers.length} Volunteer{unassignedVolunteers.length !== 1 ? "s" : ""} Without a Team
+                  </CardTitle>
+                  <CardDescription>
+                    These registered volunteers haven't been assigned to a team yet
+                  </CardDescription>
+                </div>
+              </div>
+              <Link href="/dashboard/volunteers">
+                <Button size="sm" variant="outline" className="border-red-500/40 text-red-500 hover:bg-red-500/10 gap-2 shrink-0">
+                  Assign Teams <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-2">
+                {unassignedVolunteers.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20"
+                  >
+                    <Avatar className="w-6 h-6">
+                      <AvatarImage src={v.avatar || undefined} />
+                      <AvatarFallback className="text-[10px] bg-red-500/20 text-red-500">{v.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium leading-tight">{v.name}</p>
+                      <p className="text-xs text-muted-foreground leading-tight">{v.email}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Team Overview */}
@@ -175,7 +225,7 @@ export default function AdminDashboard() {
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm">
-                        <span className="font-medium">{activity.user?.name}</span>
+                        <span className="font-medium">{activity.user?.name?.split(" ")[0]}</span>
                         <span className="text-muted-foreground"> {activity.action} </span>
                         <span className="font-medium">{activity.item}</span>
                       </p>
@@ -245,7 +295,12 @@ export default function AdminDashboard() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Pending Volunteers</CardTitle>
-                <CardDescription>Awaiting training approval</CardDescription>
+                <CardDescription>
+                  {pendingConfirmation.length > 0 && `${pendingConfirmation.length} awaiting email confirmation`}
+                  {pendingConfirmation.length > 0 && pendingActivation.length > 0 && " · "}
+                  {pendingActivation.length > 0 && `${pendingActivation.length} awaiting activation`}
+                  {pendingVolunteers.length === 0 && "All volunteers confirmed"}
+                </CardDescription>
               </div>
               <Link href="/dashboard/volunteers">
                 <Button variant="ghost" size="sm" className="text-primary">
@@ -257,12 +312,13 @@ export default function AdminDashboard() {
               {pendingVolunteers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
-                  <p>No pending approvals</p>
+                  <p>All volunteers confirmed</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {pendingVolunteers.map((volunteer) => {
+                  {pendingVolunteers.slice(0, 6).map((volunteer) => {
                     const team = teams.find((t) => t.id === volunteer.teamId)
+                    const isUnconfirmed = !volunteer.emailConfirmed
                     return (
                       <div key={volunteer.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                         <div className="flex items-center gap-3">
@@ -277,9 +333,16 @@ export default function AdminDashboard() {
                             <p className="text-xs text-muted-foreground">{team?.name || "Unassigned"}</p>
                           </div>
                         </div>
-                        <Badge variant="secondary" className="bg-amber-500/10 text-amber-600">
-                          Pending
-                        </Badge>
+                        {isUnconfirmed ? (
+                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 gap-1 text-xs">
+                            <MailWarning className="w-3 h-3" />
+                            Pending Confirmation
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs">
+                            Pending Activation
+                          </Badge>
+                        )}
                       </div>
                     )
                   })}

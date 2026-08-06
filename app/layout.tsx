@@ -5,7 +5,10 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
 import { DataProvider } from "@/lib/data-context"
 import { ThemeProvider } from "@/lib/theme-context"
+import { assertRequiredEnvVars } from "@/lib/env"
 import "./globals.css"
+
+assertRequiredEnvVars()
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" })
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
@@ -15,7 +18,7 @@ export const metadata: Metadata = {
   description: "Production Ministry Training & Management System",
   // generator: "",
   icons: {
-    icon: [],
+    icon: "/citichurch.ico",
   },
 }
 

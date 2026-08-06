@@ -492,7 +492,7 @@ export default function TeamsPage() {
                         <AvatarFallback className="bg-primary/10 text-primary">{user.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium">{user.name}</p>
+                        <p className="font-medium">{user.name.split(" ")[0]}</p>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
                       </div>
                     </div>

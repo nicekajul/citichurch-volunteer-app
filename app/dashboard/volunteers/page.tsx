@@ -22,20 +22,31 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Search, Calendar, CheckCircle, Clock, UserCheck, MoreVertical, Eye } from "lucide-react"
-import { CertificateBadge } from "@/components/dashboard/certificate-badge"
+import { Plus, Search, Calendar, CheckCircle, Clock, UserCheck, MoreVertical, Eye, Users, Crown, MailWarning } from "lucide-react"
+import { VolunteerBadges } from "@/components/volunteer-badges"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 
 export default function VolunteersPage() {
   const { user } = useAuth()
-  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, approveProgress, certificates, getEarnedCertificates } = useData()
+  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, assignUserToTeam, assignTeamLeader, approveProgress } = useData()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterTeam, setFilterTeam] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [isAddVolunteerOpen, setIsAddVolunteerOpen] = useState(false)
   const [selectedVolunteer, setSelectedVolunteer] = useState<string | null>(null)
+
+  // Team assignment dialog state
+  const [assignTeamVolunteer, setAssignTeamVolunteer] = useState<{ id: string; name: string; currentTeamId?: string } | null>(null)
+  const [assignTeamId, setAssignTeamId] = useState("")
+  const [isAssigning, setIsAssigning] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
+
+  // Make Team Leader dialog state
+  const [makeLeaderVolunteer, setMakeLeaderVolunteer] = useState<{ id: string; name: string; teamId: string } | null>(null)
+  const [isMakingLeader, setIsMakingLeader] = useState(false)
+  const [makeLeaderError, setMakeLeaderError] = useState<string | null>(null)
 
   const [newVolunteer, setNewVolunteer] = useState({
     name: "",
@@ -46,8 +57,8 @@ export default function VolunteersPage() {
     password: "",
   })
 
-  // Filter volunteers based on role
-  let volunteers = users.filter((u) => u.role === "volunteer")
+  // Show both volunteers and team leaders (leaders are still ministry members that need visibility)
+  let volunteers = users.filter((u) => u.role === "volunteer" || u.role === "leader")
 
   if (user?.role === "leader") {
     volunteers = volunteers.filter((v) => v.teamId === user.team_id)
@@ -58,7 +69,10 @@ export default function VolunteersPage() {
       v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.email.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesTeam = filterTeam === "all" || v.teamId === filterTeam
-    const matchesStatus = filterStatus === "all" || v.status === filterStatus
+    const matchesStatus =
+      filterStatus === "all" ||
+      (filterStatus === "unconfirmed" && !v.emailConfirmed) ||
+      (filterStatus !== "unconfirmed" && v.emailConfirmed && v.status === filterStatus)
     return matchesSearch && matchesTeam && matchesStatus
   })
 
@@ -102,6 +116,40 @@ export default function VolunteersPage() {
     updateUser(volunteerId, { status: "active" })
   }
 
+  const openAssignTeam = (v: { id: string; name: string; teamId?: string }) => {
+    setAssignTeamVolunteer({ id: v.id, name: v.name, currentTeamId: v.teamId })
+    setAssignTeamId(v.teamId || "")
+    setAssignError(null)
+  }
+
+  const handleAssignTeam = async () => {
+    if (!assignTeamVolunteer) return
+    setIsAssigning(true)
+    setAssignError(null)
+    try {
+      await assignUserToTeam(assignTeamVolunteer.id, assignTeamId)
+      setAssignTeamVolunteer(null)
+    } catch (e) {
+      setAssignError(e instanceof Error ? e.message : "Failed to assign team. Check your permissions.")
+    } finally {
+      setIsAssigning(false)
+    }
+  }
+
+  const handleMakeLeader = async () => {
+    if (!makeLeaderVolunteer) return
+    setIsMakingLeader(true)
+    setMakeLeaderError(null)
+    try {
+      await assignTeamLeader(makeLeaderVolunteer.id, makeLeaderVolunteer.teamId)
+      setMakeLeaderVolunteer(null)
+    } catch (e) {
+      setMakeLeaderError(e instanceof Error ? e.message : "Failed to assign team leader.")
+    } finally {
+      setIsMakingLeader(false)
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <Header title="Volunteers" subtitle={user?.role === "admin" ? "Manage all volunteers" : "Your team members"} />
@@ -116,7 +164,7 @@ export default function VolunteersPage() {
                   <UserCheck className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{filteredVolunteers.filter((v) => v.status === "active").length}</p>
+                  <p className="text-2xl font-bold">{volunteers.filter((v) => v.status === "active").length}</p>
                   <p className="text-xs text-muted-foreground">Active</p>
                 </div>
               </div>
@@ -130,9 +178,9 @@ export default function VolunteersPage() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">
-                    {filteredVolunteers.filter((v) => v.status === "pending").length}
+                    {volunteers.filter((v) => v.emailConfirmed && v.status === "pending").length}
                   </p>
-                  <p className="text-xs text-muted-foreground">Pending</p>
+                  <p className="text-xs text-muted-foreground">Pending Activation</p>
                 </div>
               </div>
             </CardContent>
@@ -140,18 +188,14 @@ export default function VolunteersPage() {
           <Card className="border-border/50">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <MailWarning className="w-5 h-5 text-orange-500" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold">
-                    {
-                      trainingProgress.filter(
-                        (p) => p.completed && !p.approvedBy && filteredVolunteers.some((v) => v.id === p.userId),
-                      ).length
-                    }
+                    {volunteers.filter((v) => !v.emailConfirmed).length}
                   </p>
-                  <p className="text-xs text-muted-foreground">Awaiting Approval</p>
+                  <p className="text-xs text-muted-foreground">Pending Confirmation</p>
                 </div>
               </div>
             </CardContent>
@@ -163,7 +207,7 @@ export default function VolunteersPage() {
                   <Calendar className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{filteredVolunteers.length}</p>
+                  <p className="text-2xl font-bold">{volunteers.length}</p>
                   <p className="text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
@@ -205,7 +249,8 @@ export default function VolunteersPage() {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="pending">Pending Activation</SelectItem>
+                <SelectItem value="unconfirmed">Pending Confirmation</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
@@ -306,13 +351,108 @@ export default function VolunteersPage() {
           )}
         </div>
 
+        {/* Assign Team Dialog */}
+        <Dialog open={!!assignTeamVolunteer} onOpenChange={(open) => { if (!open) setAssignTeamVolunteer(null) }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Assign to Team</DialogTitle>
+              <DialogDescription>
+                Choose a team for <span className="font-medium text-foreground">{assignTeamVolunteer?.name}</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Select value={assignTeamId} onValueChange={setAssignTeamId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a team..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: t.color || "#3b82f6" }}
+                        />
+                        {t.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {assignTeamId && (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+                  style={{
+                    backgroundColor: (teams.find((t) => t.id === assignTeamId)?.color || "#3b82f6") + "22",
+                    color: teams.find((t) => t.id === assignTeamId)?.color || "#3b82f6",
+                    border: `1px solid ${(teams.find((t) => t.id === assignTeamId)?.color || "#3b82f6")}44`,
+                  }}
+                >
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ backgroundColor: teams.find((t) => t.id === assignTeamId)?.color || "#3b82f6" }}
+                  />
+                  {teams.find((t) => t.id === assignTeamId)?.name}
+                </div>
+              )}
+            </div>
+            {assignError && (
+              <p className="text-sm text-destructive px-1 -mt-2">{assignError}</p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignTeamVolunteer(null)} className="dark:hover:bg-muted">
+                Cancel
+              </Button>
+              <Button onClick={handleAssignTeam} disabled={!assignTeamId || isAssigning}>
+                {isAssigning ? "Saving..." : "Assign Team"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Make Team Leader Dialog */}
+        <Dialog open={!!makeLeaderVolunteer} onOpenChange={(open) => { if (!open) setMakeLeaderVolunteer(null) }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-500" />
+                Appoint Team Leader
+              </DialogTitle>
+              <DialogDescription>
+                This will promote{" "}
+                <span className="font-medium text-foreground">{makeLeaderVolunteer?.name}</span> to Team Leader
+                for{" "}
+                <span className="font-medium text-foreground">
+                  {teams.find((t) => t.id === makeLeaderVolunteer?.teamId)?.name}
+                </span>
+                . They will receive a notification and gain leader permissions.
+              </DialogDescription>
+            </DialogHeader>
+            {makeLeaderError && (
+              <p className="text-sm text-destructive px-1">{makeLeaderError}</p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMakeLeaderVolunteer(null)} className="dark:hover:bg-muted">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleMakeLeader}
+                disabled={isMakingLeader}
+                className="bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                {isMakingLeader ? "Appointing..." : "Appoint as Leader"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Volunteers Table */}
         <Card className="border-border/50">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Volunteer</TableHead>
+                  <TableHead>Member</TableHead>
                   <TableHead>Team</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Status</TableHead>
@@ -337,25 +477,39 @@ export default function VolunteersPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium">{volunteer.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{volunteer.name.split(" ")[0]}</p>
+                              {volunteer.role === "leader" && (
+                                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/20 gap-0.5">
+                                  <Crown className="w-2.5 h-2.5" /> Leader
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">{volunteer.email}</p>
-                            {(() => {
-                              const earned = getEarnedCertificates(volunteer.id)
-                              if (!earned.length) return null
-                              return (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {earned.map((cert) => <CertificateBadge key={cert.id} certificate={cert} />)}
-                                </div>
-                              )
-                            })()}
+                            <div className="mt-1.5">
+                              <VolunteerBadges userId={volunteer.id} />
+                            </div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         {team ? (
-                          <Badge variant="secondary">{team.name}</Badge>
+                          <span
+                            className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: (team.color || "#3b82f6") + "22",
+                              color: team.color || "#3b82f6",
+                              border: `1px solid ${(team.color || "#3b82f6")}44`,
+                            }}
+                          >
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: team.color || "#3b82f6" }}
+                            />
+                            {team.name}
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">Unassigned</span>
+                          <span className="text-muted-foreground text-sm italic">Unassigned</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -370,24 +524,22 @@ export default function VolunteersPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            volunteer.status === "active"
-                              ? "default"
-                              : volunteer.status === "pending"
-                                ? "secondary"
-                                : "outline"
-                          }
-                          className={
-                            volunteer.status === "active"
-                              ? "bg-green-500/10 text-green-600 border-green-500/20"
-                              : volunteer.status === "pending"
-                                ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                                : ""
-                          }
-                        >
-                          {volunteer.status}
-                        </Badge>
+                        {!volunteer.emailConfirmed ? (
+                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 gap-1">
+                            <MailWarning className="w-3 h-3" />
+                            Pending Confirmation
+                          </Badge>
+                        ) : volunteer.status === "active" ? (
+                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                            Active
+                          </Badge>
+                        ) : volunteer.status === "pending" ? (
+                          <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                            Pending Activation
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">{volunteer.status}</Badge>
+                        )}
                         {pendingApprovals.length > 0 && (
                           <Badge variant="secondary" className="ml-2 bg-blue-500/10 text-blue-600">
                             {pendingApprovals.length} to approve
@@ -411,6 +563,21 @@ export default function VolunteersPage() {
                                 View Profile
                               </Link>
                             </DropdownMenuItem>
+                            {user?.role === "admin" && (
+                              <DropdownMenuItem onClick={() => openAssignTeam(volunteer)}>
+                                <Users className="w-4 h-4 mr-2" />
+                                {volunteer.teamId ? "Change Team" : "Assign to Team"}
+                              </DropdownMenuItem>
+                            )}
+                            {user?.role === "admin" && volunteer.role === "volunteer" && volunteer.teamId && (
+                              <DropdownMenuItem
+                                onClick={() => setMakeLeaderVolunteer({ id: volunteer.id, name: volunteer.name, teamId: volunteer.teamId! })}
+                                className="text-amber-600 focus:text-amber-600"
+                              >
+                                <Crown className="w-4 h-4 mr-2" />
+                                Make Team Leader
+                              </DropdownMenuItem>
+                            )}
                             {pendingApprovals.length > 0 && (
                               <DropdownMenuItem onClick={() => handleApproveAll(volunteer.id)}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
