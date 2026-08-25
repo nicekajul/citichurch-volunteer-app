@@ -59,14 +59,14 @@ export default function LoginPage() {
   ]
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="dark min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Logo Section */}
         <div className="text-center space-y-2">
           <img
             src="/logo-citichurch.png"
             alt="Citichurch"
-            className="mx-auto h-12 w-auto object-contain dark:invert-0 invert mb-2"
+            className="mx-auto h-12 w-auto object-contain mb-2"
           />
           <p className="text-muted-foreground">Production Ministry Hub</p>
         </div>

@@ -20,8 +20,9 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle")
 
-  const { signup } = useAuth()
+  const { signup, resendConfirmation } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,15 +33,25 @@ export default function SignupPage() {
     const result = await signup(email, password, name)
 
     if (result.success) {
-      setSuccess(true)
-      setTimeout(() => {
+      if (result.needsEmailConfirmation === false) {
+        // Supabase auto-confirmed the account (email confirmations are off) —
+        // no email was sent, so skip straight to login instead of telling the
+        // user to check an inbox that will stay empty.
         router.push("/login")
-      }, 3000)
+      } else {
+        setSuccess(true)
+      }
     } else {
       setError(result.error || "Failed to create account")
     }
 
     setIsLoading(false)
+  }
+
+  const handleResend = async () => {
+    setResendState("sending")
+    const result = await resendConfirmation(email)
+    setResendState(result.success ? "sent" : "idle")
   }
 
   if (success) {
@@ -56,10 +67,29 @@ export default function SignupPage() {
               We sent a confirmation link to <strong>{email}</strong>
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground text-center">
-              Click the link in the email to verify your account. Redirecting to login page...
+              Click the link in the email to verify your account, then sign in. Didn&apos;t get it? Check your spam
+              folder, or request a new one below.
             </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={resendState !== "idle"}
+              onClick={handleResend}
+            >
+              {resendState === "sending"
+                ? "Sending..."
+                : resendState === "sent"
+                ? "Confirmation email sent"
+                : "Resend confirmation email"}
+            </Button>
+            <div className="text-center text-sm">
+              <Link href="/login" className="text-primary hover:underline font-medium">
+                Back to sign in
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

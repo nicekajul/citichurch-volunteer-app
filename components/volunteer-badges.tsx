@@ -236,13 +236,18 @@ export function VolunteerBadges({ userId, size = "sm", variant = "badge", toolti
     const completedVideoIds = new Set(
       trainingProgress.filter((p) => p.userId === userId && p.completed).map((p) => p.videoId),
     )
+    // A tier only counts as "earned" once every module in it has been
+    // approved by a leader/admin, not merely self-marked complete.
+    const approvedVideoIds = new Set(
+      trainingProgress.filter((p) => p.userId === userId && p.completed && p.approvedBy).map((p) => p.videoId),
+    )
     // Mirrors getEarnedCertificates in supabase-data-context, computed inline so this
     // memo keys off the underlying data arrays instead of an unstable function reference.
     const earnedIds = new Set(
       tiers
         .filter((cert) => {
           const certModules = trainingVideos.filter((v) => v.certificateId === cert.id)
-          return certModules.length > 0 && certModules.every((v) => completedVideoIds.has(v.id))
+          return certModules.length > 0 && certModules.every((v) => approvedVideoIds.has(v.id))
         })
         .map((c) => c.id),
     )

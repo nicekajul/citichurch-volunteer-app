@@ -26,7 +26,13 @@ interface AuthContextType {
   user: User | null
   profile: Profile | null
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  signup: (email: string, password: string, name: string, role?: UserRole) => Promise<{ success: boolean; error?: string }>
+  signup: (
+    email: string,
+    password: string,
+    name: string,
+    role?: UserRole
+  ) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>
+  resendConfirmation: (email: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   isLoading: boolean
   refreshProfile: () => Promise<void>
@@ -144,11 +150,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signup = async (
-    email: string, 
-    password: string, 
-    name: string, 
+    email: string,
+    password: string,
+    name: string,
     role: UserRole = "volunteer"
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }> => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -166,6 +172,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: error.message }
       }
 
+      // Supabase returns success with an empty identities array (no error) when
+      // the email is already registered, to avoid leaking account existence.
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        return { success: false, error: "An account with this email already exists. Try logging in instead." }
+      }
+
+      // If a session came back, "Confirm email" is off in Supabase and the
+      // account is already active — no confirmation email was ever sent.
+      return { success: true, needsEmailConfirmation: !data.session }
+    } catch (error) {
+      return { success: false, error: "An unexpected error occurred" }
+    }
+  }
+
+  const resendConfirmation = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.resend({ type: "signup", email })
+      if (error) return { success: false, error: error.message }
       return { success: true }
     } catch (error) {
       return { success: false, error: "An unexpected error occurred" }
@@ -181,7 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, login, signup, logout, isLoading, refreshProfile }}>
+    <AuthContext.Provider
+      value={{ user, profile, login, signup, resendConfirmation, logout, isLoading, refreshProfile }}
+    >
       {children}
     </AuthContext.Provider>
   )

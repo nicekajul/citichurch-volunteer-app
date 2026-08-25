@@ -267,7 +267,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         quizScore: p.quiz_score || undefined,
         quizPassed: p.quiz_score ? p.quiz_score >= 70 : undefined,
         completedAt: p.completed_at || undefined,
-        approvedBy: undefined, // Not in current schema
+        approvedBy: p.approved_by || undefined,
       }))
 
       setTrainingProgress(mappedProgress)
@@ -863,10 +863,6 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   }
 
   const approveProgress = async (progressId: string, approverId: string) => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const currentUserId = sessionData?.session?.user?.id
-    const currentRole: string = sessionData?.session?.user?.user_metadata?.role ?? ""
-
     // Look up progress record before updating so we can notify the volunteer
     const progressRecord = trainingProgress.find((p) => p.id === progressId)
     const volunteer = progressRecord ? users.find((u) => u.id === progressRecord.userId) : null
@@ -874,11 +870,14 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
     const { error } = await supabase
       .from("training_progress")
-      .update({ status: "approved" })
+      .update({ approved_by: approverId, approved_at: new Date().toISOString() })
       .eq("id", progressId)
 
     if (error) throw error
-    await refreshProgress(currentRole !== "admin" ? currentUserId : undefined)
+    // Leaders/admins need the full team's progress visible via RLS, not just
+    // their own rows — passing a userId here would wipe everyone else's data
+    // out of local state (see loadAllData, which scopes this the same way).
+    await refreshProgress()
 
     // Notify the volunteer their training was approved
     if (volunteer && module) {
@@ -1242,12 +1241,15 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   }
 
   const getEarnedCertificates = (userId: string): Certificate[] => {
-    const completedIds = new Set(
-      trainingProgress.filter((p) => p.userId === userId && p.completed).map((p) => p.videoId)
+    // A tier is only "earned" once a leader/admin has approved every module in
+    // it — self-marked completion alone isn't enough (see leader dashboard's
+    // Pending Approvals, which tracks the same approvedBy gate).
+    const approvedIds = new Set(
+      trainingProgress.filter((p) => p.userId === userId && p.completed && p.approvedBy).map((p) => p.videoId)
     )
     return certificates.filter((cert) => {
       const certModules = trainingVideos.filter((v) => v.certificateId === cert.id)
-      return certModules.length > 0 && certModules.every((v) => completedIds.has(v.id))
+      return certModules.length > 0 && certModules.every((v) => approvedIds.has(v.id))
     })
   }
 
