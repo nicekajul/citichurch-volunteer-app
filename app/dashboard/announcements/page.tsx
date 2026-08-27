@@ -24,7 +24,7 @@ import { Bell, Plus, Calendar, User, Trash2 } from "lucide-react"
 
 export default function AnnouncementsPage() {
   const { user } = useAuth()
-  const { announcements, teams, users, addAnnouncement, deleteAnnouncement } = useData()
+  const { announcements, teams, users, addAnnouncement, deleteAnnouncement, hasTeamPermission } = useData()
   const [isOpen, setIsOpen] = useState(false)
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: "",
@@ -34,7 +34,11 @@ export default function AnnouncementsPage() {
   })
   const [createError, setCreateError] = useState<string | null>(null)
 
-  const canCreate = user?.role === "admin" || user?.role === "leader"
+  // A volunteer delegated the "announcements" permission posts to their own
+  // team the same way a leader does.
+  const isDelegatedAnnouncer = user?.role === "volunteer" && hasTeamPermission(user.id, "announcements")
+  const isTeamScopedManager = user?.role === "leader" || isDelegatedAnnouncer
+  const canCreate = user?.role === "admin" || isTeamScopedManager
 
   const filteredAnnouncements = announcements
     .filter((a) => {
@@ -55,7 +59,7 @@ export default function AnnouncementsPage() {
         content: newAnnouncement.content,
         priority: newAnnouncement.priority,
         authorId: user.id,
-        teamId: user.role === "leader" ? (user.team_id ?? undefined) : (newAnnouncement.teamId && newAnnouncement.teamId !== "all") ? newAnnouncement.teamId : undefined,
+        teamId: isTeamScopedManager ? (user.team_id ?? undefined) : (newAnnouncement.teamId && newAnnouncement.teamId !== "all") ? newAnnouncement.teamId : undefined,
       })
       setNewAnnouncement({ title: "", content: "", priority: "low", teamId: "" })
       setIsOpen(false)

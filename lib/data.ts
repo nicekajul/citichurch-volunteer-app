@@ -122,6 +122,18 @@ export interface VolunteerAvailability {
   note?: string
 }
 
+// Task-level responsibilities a team leader can delegate to a team member
+export type DelegatedPermission = "schedule" | "training" | "approvals" | "announcements"
+
+export interface TeamPermission {
+  id: string
+  userId: string
+  teamId: string
+  permission: DelegatedPermission
+  grantedBy?: string
+  createdAt: string
+}
+
 export interface AppNotification {
   id: string
   userId: string

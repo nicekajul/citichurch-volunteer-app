@@ -18,22 +18,52 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User, Award } from "lucide-react"
+import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User, Award, XCircle, ShieldCheck } from "lucide-react"
 import { VolunteerBadges } from "@/components/volunteer-badges"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { useRouter } from "next/navigation"
+import type { DelegatedPermission } from "@/lib/data"
+
+const PERMISSION_OPTIONS: { key: DelegatedPermission; label: string; description: string }[] = [
+  { key: "schedule", label: "Manage Schedule", description: "Create and edit service schedules and assignments" },
+  { key: "training", label: "Manage Training Modules", description: "Create and edit training videos and quizzes" },
+  { key: "approvals", label: "Approve Trainings", description: "Approve or decline completed training modules" },
+  { key: "announcements", label: "Post Announcements", description: "Post announcements to the team" },
+]
 
 export default function MyTeamPage() {
   const { user } = useAuth()
-  const { users, teams, trainingVideos, trainingProgress, approveProgress, addAnnouncement, certificates, getEarnedCertificates } = useData()
+  const {
+    users,
+    teams,
+    trainingVideos,
+    trainingProgress,
+    approveProgress,
+    declineProgress,
+    addAnnouncement,
+    certificates,
+    getEarnedCertificates,
+    teamPermissions,
+    grantTeamPermission,
+    revokeTeamPermission,
+    hasTeamPermission,
+  } = useData()
   const router = useRouter()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedMember, setSelectedMember] = useState<string | null>(null)
   const [isMessageOpen, setIsMessageOpen] = useState(false)
   const [message, setMessage] = useState({ title: "", content: "" })
+  const [permissionsMember, setPermissionsMember] = useState<{ id: string; name: string } | null>(null)
+  const [decliningProgressId, setDecliningProgressId] = useState<string | null>(null)
+  const [declineReason, setDeclineReason] = useState("")
 
-  if (user?.role !== "leader") {
+  const isLeader = user?.role === "leader"
+  const canApprove = isLeader || hasTeamPermission(user?.id, "approvals")
+  const canMessage = isLeader || hasTeamPermission(user?.id, "announcements")
+
+  if (!user || (!isLeader && !canApprove && !hasTeamPermission(user.id, "schedule") && !hasTeamPermission(user.id, "training") && !canMessage)) {
     router.push("/dashboard")
     return null
   }
@@ -41,6 +71,18 @@ export default function MyTeamPage() {
   const myTeam = teams.find((t) => t.id === user.team_id)
   const teamMembers = users.filter((u) => u.teamId === user.team_id && u.role === "volunteer")
   const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
+
+  const handleTogglePermission = async (memberId: string, permission: DelegatedPermission, enabled: boolean) => {
+    if (!user?.team_id) return
+    if (enabled) {
+      await grantTeamPermission(memberId, user.team_id, permission)
+    } else {
+      const existing = teamPermissions.find(
+        (p) => p.userId === memberId && p.teamId === user.team_id && p.permission === permission,
+      )
+      if (existing) await revokeTeamPermission(existing.id)
+    }
+  }
 
   const filteredMembers = teamMembers.filter(
     (m) =>
@@ -65,6 +107,13 @@ export default function MyTeamPage() {
 
   const handleApprove = (progressId: string) => {
     approveProgress(progressId, user.id)
+  }
+
+  const handleDecline = async () => {
+    if (!decliningProgressId) return
+    await declineProgress(decliningProgressId, user.id, declineReason.trim())
+    setDecliningProgressId(null)
+    setDeclineReason("")
   }
 
   const handleSendMessage = () => {
@@ -99,10 +148,12 @@ export default function MyTeamPage() {
             />
           </div>
 
-          <Button onClick={() => setIsMessageOpen(true)}>
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Send Team Message
-          </Button>
+          {canMessage && (
+            <Button onClick={() => setIsMessageOpen(true)}>
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Send Team Message
+            </Button>
+          )}
         </div>
 
         {/* Team Members Grid */}
@@ -162,7 +213,18 @@ export default function MyTeamPage() {
                     >
                       View Details
                     </Button>
-                    {pendingApprovals.length > 0 && (
+                    {isLeader && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-transparent"
+                        title="Delegate permissions"
+                        onClick={() => setPermissionsMember({ id: member.id, name: member.name })}
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {canApprove && pendingApprovals.length > 0 && (
                       <Button
                         size="sm"
                         className="bg-primary hover:bg-primary/90"
@@ -242,14 +304,19 @@ export default function MyTeamPage() {
                           </div>
                           <div>
                             <p className="font-medium text-sm">{video.title}</p>
-                            {videoProgress && (
+                            {videoProgress && isCompleted && (
                               <p className="text-xs text-muted-foreground">
-                                {isCompleted
-                                  ? `Completed • Score: ${videoProgress.quizScore || "N/A"}%`
-                                  : `In progress • ${Math.round((videoProgress.watchedSeconds / video.duration) * 100)}% watched`}
+                                Completed • Score: {videoProgress.quizScore || "N/A"}%
                               </p>
                             )}
-                            {!videoProgress && <p className="text-xs text-muted-foreground">Not started</p>}
+                            {videoProgress && !isCompleted && videoProgress.watchedSeconds > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                In progress • {Math.round((videoProgress.watchedSeconds / video.duration) * 100)}% watched
+                              </p>
+                            )}
+                            {(!videoProgress || (!isCompleted && videoProgress.watchedSeconds === 0)) && (
+                              <p className="text-xs text-muted-foreground">Not started</p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -259,12 +326,25 @@ export default function MyTeamPage() {
                               Approved
                             </Badge>
                           )}
-                          {isCompleted && !isApproved && videoProgress && (
-                            <Button size="sm" onClick={() => handleApprove(videoProgress.id)}>
-                              Approve
-                            </Button>
+                          {isCompleted && !isApproved && videoProgress && canApprove && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                                onClick={() => { setDecliningProgressId(videoProgress.id); setDeclineReason("") }}
+                              >
+                                <XCircle className="w-3.5 h-3.5 mr-1" />
+                                Decline
+                              </Button>
+                              <Button size="sm" onClick={() => handleApprove(videoProgress.id)}>
+                                Approve
+                              </Button>
+                            </>
                           )}
-                          {!isCompleted && videoProgress && <Badge variant="secondary">In Progress</Badge>}
+                          {!isCompleted && videoProgress && videoProgress.watchedSeconds > 0 && (
+                            <Badge variant="secondary">In Progress</Badge>
+                          )}
                         </div>
                       </div>
                     )
@@ -314,6 +394,71 @@ export default function MyTeamPage() {
               <Button onClick={handleSendMessage} disabled={!message.title || !message.content}>
                 <Send className="w-4 h-4 mr-2" />
                 Send Message
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Decline Reason Dialog */}
+        <Dialog open={!!decliningProgressId} onOpenChange={(open) => { if (!open) { setDecliningProgressId(null); setDeclineReason("") } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Decline Training</DialogTitle>
+              <DialogDescription>
+                This sends the module back to &quot;not started&quot; so the volunteer can redo it. Let them know why.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <Textarea
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                placeholder="Reason for declining (optional)..."
+                rows={3}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setDecliningProgressId(null); setDeclineReason("") }}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDecline}>
+                <XCircle className="w-4 h-4 mr-2" />
+                Decline
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delegate Permissions Dialog — leader only */}
+        <Dialog open={!!permissionsMember} onOpenChange={(open) => { if (!open) setPermissionsMember(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delegate Permissions</DialogTitle>
+              <DialogDescription>
+                Let {permissionsMember?.name} help manage the team by handling these tasks on your behalf.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-4">
+              {PERMISSION_OPTIONS.map((opt) => {
+                const enabled = permissionsMember ? hasTeamPermission(permissionsMember.id, opt.key) : false
+                return (
+                  <div key={opt.key} className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground">{opt.description}</p>
+                    </div>
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={(checked) => {
+                        if (permissionsMember) handleTogglePermission(permissionsMember.id, opt.key, checked)
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPermissionsMember(null)}>
+                Done
               </Button>
             </DialogFooter>
           </DialogContent>

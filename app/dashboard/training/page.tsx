@@ -61,6 +61,7 @@ export default function TrainingPage() {
     addCertificate,
     updateCertificate,
     deleteCertificate,
+    hasTeamPermission,
   } = useData()
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -129,7 +130,12 @@ export default function TrainingPage() {
     }[]
   >([{ question: "", options: ["", "", "", ""], correctAnswer: 0 }])
 
-  if (user?.role !== "admin" && user?.role !== "leader") {
+  // A volunteer delegated the "training" permission manages modules the same
+  // way a leader does — locked to their own team, same create/edit access.
+  const isDelegatedTrainer = user?.role === "volunteer" && hasTeamPermission(user.id, "training")
+  const isTeamScopedManager = user?.role === "leader" || isDelegatedTrainer
+
+  if (user?.role !== "admin" && !isTeamScopedManager) {
     return null
   }
 
@@ -141,7 +147,7 @@ export default function TrainingPage() {
     const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesTeam = filterTeam === "all" || (filterTeam === "general" && !v.teamId) || v.teamId === filterTeam
 
-    if (user?.role === "leader") {
+    if (isTeamScopedManager) {
       const isRelevant = !v.teamId || v.teamId === user.team_id
       return matchesSearch && isRelevant && (filterTeam === "all" || matchesTeam)
     }
@@ -207,7 +213,7 @@ export default function TrainingPage() {
       description: certForm.description,
       color: certForm.color,
       prerequisiteCertificateId: certForm.prerequisiteCertificateId || undefined,
-      teamId: user?.role === "leader" ? user.team_id || undefined : certForm.teamId || undefined,
+      teamId: isTeamScopedManager ? user.team_id || undefined : certForm.teamId || undefined,
       orderIndex: certForm.orderIndex,
     }
     if (editCertId) {
@@ -240,7 +246,7 @@ export default function TrainingPage() {
     }
 
     const teamId =
-      user?.role === "leader" ? user.team_id : newVideo.teamId === "general" ? undefined : newVideo.teamId
+      isTeamScopedManager ? user.team_id : newVideo.teamId === "general" ? undefined : newVideo.teamId
 
     addTrainingVideo({
       title: newVideo.title,
@@ -398,7 +404,7 @@ export default function TrainingPage() {
 
   const canEditVideo = (video: (typeof trainingVideos)[0]) => {
     if (user?.role === "admin") return true
-    if (user?.role === "leader" && video.teamId === user.team_id) return true
+    if (isTeamScopedManager && video.teamId === user.team_id) return true
     return false
   }
 
@@ -613,7 +619,7 @@ export default function TrainingPage() {
               <DialogHeader>
                 <DialogTitle>Add Training Module</DialogTitle>
                 <DialogDescription>
-                  {user?.role === "leader"
+                  {isTeamScopedManager
                     ? `Create a new training module for your ${teams.find((t) => t.id === user.team_id)?.name} team`
                     : "Create a new training module with video and/or documents"}
                 </DialogDescription>

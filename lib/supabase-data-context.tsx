@@ -5,8 +5,8 @@ import { createClient } from "./supabase/client"
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js"
 
 // Re-export types from data.ts for compatibility
-export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication, AppNotification, VolunteerAvailability } from "./data"
-import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate, AppNotification, VolunteerAvailability } from "./data"
+export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication, AppNotification, VolunteerAvailability, DelegatedPermission, TeamPermission } from "./data"
+import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate, AppNotification, VolunteerAvailability, DelegatedPermission, TeamPermission } from "./data"
 
 interface DataContextType {
   users: User[]
@@ -20,6 +20,7 @@ interface DataContextType {
   certificates: Certificate[]
   notifications: AppNotification[]
   availability: VolunteerAvailability[]
+  teamPermissions: TeamPermission[]
   unreadCount: number
   isLoading: boolean
   error: string | null
@@ -35,6 +36,7 @@ interface DataContextType {
   refreshCertificates: () => Promise<void>
   refreshNotifications: () => Promise<void>
   refreshAvailability: (userId?: string) => Promise<void>
+  refreshTeamPermissions: () => Promise<void>
   markNotificationRead: (id: string) => Promise<void>
   markAllNotificationsRead: () => Promise<void>
   addCertificate: (cert: Omit<Certificate, "id">) => Promise<void>
@@ -67,6 +69,7 @@ interface DataContextType {
   // Progress management
   updateProgress: (userId: string, videoId: string, updates: Partial<TrainingProgress>) => Promise<void>
   approveProgress: (progressId: string, approverId: string) => Promise<void>
+  declineProgress: (progressId: string, approverId: string, reason: string) => Promise<void>
 
   // Announcements
   addAnnouncement: (announcement: Omit<Announcement, "id" | "createdAt">) => Promise<void>
@@ -85,6 +88,10 @@ interface DataContextType {
   setMyAvailability: (entries: { date: string; status: "available" | "unavailable" }[]) => Promise<void>
   clearMyAvailability: (date: string) => Promise<void>
 
+  // Delegated team permissions
+  grantTeamPermission: (userId: string, teamId: string, permission: DelegatedPermission) => Promise<void>
+  revokeTeamPermission: (id: string) => Promise<void>
+
   // Helpers
   getTeamMembers: (teamId: string) => User[]
   getUserProgress: (userId: string) => TrainingProgress[]
@@ -92,6 +99,7 @@ interface DataContextType {
   getTeamLeader: (teamId: string) => User | undefined
   getAvailabilityForUser: (userId: string) => VolunteerAvailability[]
   getAvailabilityForDate: (userId: string, date: string) => VolunteerAvailability | undefined
+  hasTeamPermission: (userId: string | undefined, permission: DelegatedPermission) => boolean
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -143,6 +151,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [availability, setAvailability] = useState<VolunteerAvailability[]>([])
+  const [teamPermissions, setTeamPermissions] = useState<TeamPermission[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -377,6 +386,65 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Fetch delegated team permissions — RLS scopes this to what the caller may see
+  // (their own grants, their team's grants if leader, or everything if admin)
+  const refreshTeamPermissions = async () => {
+    try {
+      const { data, error } = await supabase.from("team_permissions").select("*")
+      if (error) throw new Error(error.message)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapped: TeamPermission[] = (data || []).map((p: any) => ({
+        id: p.id,
+        userId: p.user_id,
+        teamId: p.team_id,
+        permission: p.permission as DelegatedPermission,
+        grantedBy: p.granted_by || undefined,
+        createdAt: p.created_at,
+      }))
+
+      setTeamPermissions(mapped)
+    } catch (err) {
+      console.error("Error fetching team permissions:", err)
+    }
+  }
+
+  const grantTeamPermission = async (userId: string, teamId: string, permission: DelegatedPermission) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const grantedBy = sessionData?.session?.user?.id
+
+    const { data, error } = await supabase
+      .from("team_permissions")
+      .insert({ user_id: userId, team_id: teamId, permission, granted_by: grantedBy })
+      .select()
+      .single()
+
+    if (error) throw new Error(error.message)
+
+    setTeamPermissions((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        userId: data.user_id,
+        teamId: data.team_id,
+        permission: data.permission,
+        grantedBy: data.granted_by || undefined,
+        createdAt: data.created_at,
+      },
+    ])
+  }
+
+  const revokeTeamPermission = async (id: string) => {
+    const { error } = await supabase.from("team_permissions").delete().eq("id", id)
+    if (error) throw new Error(error.message)
+    setTeamPermissions((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  const hasTeamPermission = (userId: string | undefined, permission: DelegatedPermission): boolean => {
+    if (!userId) return false
+    return teamPermissions.some((p) => p.userId === userId && p.permission === permission)
+  }
+
   // ── Notification helpers ──────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -470,6 +538,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshCertificates(),
         refreshNotifications(),
         refreshAvailability(userId),
+        refreshTeamPermissions(),
       ])
 
       // Only mark loading complete if no newer load has started since we began.
@@ -488,6 +557,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       setMinistryApplications([])
       setNotifications([])
       setAvailability([])
+      setTeamPermissions([])
       setIsLoading(false)
     }
 
@@ -885,6 +955,41 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         user_id: volunteer.id,
         title: "Training approved!",
         message: `Your completion of "${module.title}" has been approved by your team leader.`,
+        type: "training",
+        link: "/dashboard/training",
+      }])
+    }
+  }
+
+  // Sends a completed training back to "not started" and tells the volunteer
+  // why, so they can redo it. Uses the same UPDATE policies as approveProgress
+  // (leader/admin/delegated-approver), since RLS doesn't distinguish which
+  // columns are being changed.
+  const declineProgress = async (progressId: string, approverId: string, reason: string) => {
+    const progressRecord = trainingProgress.find((p) => p.id === progressId)
+    const volunteer = progressRecord ? users.find((u) => u.id === progressRecord.userId) : null
+    const module = progressRecord ? trainingVideos.find((v) => v.id === progressRecord.videoId) : null
+
+    const { error } = await supabase
+      .from("training_progress")
+      .update({
+        status: "not_started",
+        progress: 0,
+        completed_at: null,
+        quiz_score: null,
+        approved_by: null,
+        approved_at: null,
+      })
+      .eq("id", progressId)
+
+    if (error) throw error
+    await refreshProgress()
+
+    if (volunteer && module) {
+      await pushNotifications([{
+        user_id: volunteer.id,
+        title: "Training needs another look",
+        message: `Your completion of "${module.title}" was declined${reason ? `: ${reason}` : "."} Please redo the module.`,
         type: "training",
         link: "/dashboard/training",
       }])
@@ -1371,6 +1476,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         certificates,
         notifications,
         availability,
+        teamPermissions,
         unreadCount: notifications.filter((n) => !n.read).length,
         isLoading,
         error,
@@ -1384,6 +1490,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         refreshCertificates,
         refreshNotifications,
         refreshAvailability,
+        refreshTeamPermissions,
         markNotificationRead,
         markAllNotificationsRead,
         addCertificate,
@@ -1406,6 +1513,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         updateQuiz,
         updateProgress,
         approveProgress,
+        declineProgress,
         addAnnouncement,
         deleteAnnouncement,
         addServiceSchedule,
@@ -1415,12 +1523,15 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         reviewApplication,
         setMyAvailability,
         clearMyAvailability,
+        grantTeamPermission,
+        revokeTeamPermission,
         getTeamMembers,
         getUserProgress,
         getVideoQuiz,
         getTeamLeader,
         getAvailabilityForUser,
         getAvailabilityForDate,
+        hasTeamPermission,
       }}
     >
       {children}

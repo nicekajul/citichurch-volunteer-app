@@ -55,7 +55,7 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const { ministryApplications } = useData()
+  const { ministryApplications, hasTeamPermission } = useData()
   const router = useRouter()
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
@@ -70,9 +70,25 @@ export function Sidebar() {
 
   const filteredNavItems = navItems.filter((item) => {
     if (!user) return false
-    if (!item.roles.includes(user.role)) return false
-    if (item.href === "/apply" && user.team_id) return false
-    return true
+    if (item.roles.includes(user.role)) {
+      if (item.href === "/apply" && user.team_id) return false
+      return true
+    }
+    // Delegated access: a volunteer holding the relevant permission can reach
+    // the leader-only pages that permission actually unlocks, even though
+    // their role alone wouldn't normally show these nav items.
+    if (user.role === "volunteer") {
+      if (item.href === "/dashboard/training" && hasTeamPermission(user.id, "training")) return true
+      if (
+        item.href === "/dashboard/my-team" &&
+        (hasTeamPermission(user.id, "schedule") ||
+          hasTeamPermission(user.id, "training") ||
+          hasTeamPermission(user.id, "approvals") ||
+          hasTeamPermission(user.id, "announcements"))
+      )
+        return true
+    }
+    return false
   })
 
   const getDashboardHref = () => {

@@ -17,4 +17,6 @@ export {
   type ServiceSchedule,
   type ScheduleAssignment,
   type AppNotification,
+  type DelegatedPermission,
+  type TeamPermission,
 } from "./supabase-data-context"

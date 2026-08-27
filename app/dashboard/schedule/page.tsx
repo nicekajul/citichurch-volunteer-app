@@ -57,7 +57,12 @@ function AvailabilityMark({ status }: { status?: "available" | "unavailable" }) 
 
 export default function SchedulePage() {
   const { user } = useAuth()
-  const { serviceSchedules, teams, users, addServiceSchedule, updateServiceSchedule, respondToSchedule, getAvailabilityForDate } = useData()
+  const { serviceSchedules, teams, users, addServiceSchedule, updateServiceSchedule, respondToSchedule, getAvailabilityForDate, hasTeamPermission } = useData()
+
+  // A volunteer delegated the "schedule" permission manages the roster the
+  // same way a leader does — locked to their own team, same create/edit access.
+  const isDelegatedScheduler = user?.role === "volunteer" && hasTeamPermission(user.id, "schedule")
+  const isTeamScopedManager = user?.role === "leader" || isDelegatedScheduler
 
   const [currentDate, setCurrentDate] = useState(new Date())
 
@@ -87,21 +92,21 @@ export default function SchedulePage() {
   const [declineReason, setDeclineReason] = useState("")
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
 
-  const canCreate = user?.role === "admin" || user?.role === "leader"
+  const canCreate = user?.role === "admin" || isTeamScopedManager
 
   const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.team_id)
 
   // Volunteers filtered by the currently-selected team in the create form
   // Note: User objects from useData() use camelCase `teamId`, not snake_case `team_id`
   const volunteersForSelectedTeam = users.filter((u) => {
-    const teamId = user?.role === "leader" ? user.team_id : selectedTeam
+    const teamId = isTeamScopedManager ? user.team_id : selectedTeam
     if (!teamId) return false
     return (u.role === "volunteer" || u.role === "leader") && u.teamId === teamId
   })
 
   // Volunteers filtered by the currently-selected team in the edit form
   const volunteersForAddTeam = users.filter((u) => {
-    const teamId = user?.role === "leader" ? user.team_id : addTeam
+    const teamId = isTeamScopedManager ? user.team_id : addTeam
     if (!teamId) return false
     return (u.role === "volunteer" || u.role === "leader") && u.teamId === teamId
   })
@@ -128,7 +133,7 @@ export default function SchedulePage() {
 
   const handleAddAssignment = () => {
     if (!selectedVolunteer || !selectedRole) return
-    const teamId = user?.role === "leader" && user.team_id ? user.team_id : selectedTeam
+    const teamId = isTeamScopedManager && user.team_id ? user.team_id : selectedTeam
     if (!teamId) return
     if (newSchedule.assignments.some((a) => a.userId === selectedVolunteer)) return
     setNewSchedule({
@@ -161,7 +166,7 @@ export default function SchedulePage() {
   const handleOpenCreate = () => {
     setNewSchedule({ date: "", time: "", service: "", location: "", assignments: [] })
     setCreateError(null)
-    setSelectedTeam(user?.role === "leader" && user.team_id ? user.team_id : "")
+    setSelectedTeam(isTeamScopedManager && user.team_id ? user.team_id : "")
     setSelectedVolunteer("")
     setSelectedRole("")
     setIsCreateOpen(true)
@@ -184,7 +189,7 @@ export default function SchedulePage() {
 
   const handleAddEditAssignment = () => {
     if (!addVolunteer || !addRole) return
-    const teamId = user?.role === "leader" && user.team_id ? user.team_id : addTeam
+    const teamId = isTeamScopedManager && user.team_id ? user.team_id : addTeam
     if (!teamId) return
     if (editAssignments.some((a) => a.userId === addVolunteer)) return
     setEditAssignments((prev) => [...prev, { id: "", userId: addVolunteer, teamId, role: addRole, status: "assigned" }])
@@ -238,7 +243,7 @@ export default function SchedulePage() {
   // Volunteers see ALL schedules for their team so they know who they serve with
   const filteredSchedules = serviceSchedules.filter((s) => {
     if (user?.role === "admin") return true
-    if (user?.role === "leader") return s.assignments.some((a) => a.teamId === user.team_id)
+    if (isTeamScopedManager) return s.assignments.some((a) => a.teamId === user.team_id)
     if (user?.role === "volunteer") {
       if (user.team_id) return s.assignments.some((a) => a.teamId === user.team_id)
       return s.assignments.some((a) => a.userId === user.id)
@@ -286,7 +291,7 @@ export default function SchedulePage() {
                 <DialogHeader className="shrink-0">
                   <DialogTitle>Create Schedule</DialogTitle>
                   <DialogDescription>
-                    {user?.role === "leader"
+                    {isTeamScopedManager
                       ? `Add a service schedule for ${getTeamName(user.team_id || "")} team`
                       : "Add a new service schedule"}
                   </DialogDescription>
@@ -341,7 +346,7 @@ export default function SchedulePage() {
                   )}
 
                   {/* Leader: show their team as a read-only badge */}
-                  {user?.role === "leader" && user.team_id && (
+                  {isTeamScopedManager && user.team_id && (
                     <div className="flex items-center gap-2">
                       <Label>Team</Label>
                       <div
@@ -403,7 +408,7 @@ export default function SchedulePage() {
                   </div>
 
                   {/* Volunteer Assignments — only shown once a team is selected */}
-                  {(selectedTeam || user?.role === "leader") && (
+                  {(selectedTeam || isTeamScopedManager) && (
                     <div className="space-y-3 pt-2 border-t">
                       <div className="flex items-center justify-between">
                         <Label>Assign Volunteers</Label>
@@ -846,7 +851,7 @@ export default function SchedulePage() {
                     )}
 
                     {/* Volunteer + Role */}
-                    {(addTeam || user?.role === "leader") && (
+                    {(addTeam || isTeamScopedManager) && (
                       <>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1.5">
@@ -905,7 +910,7 @@ export default function SchedulePage() {
                         Select a team above to see its members
                       </p>
                     )}
-                    {user?.role === "leader" && user.team_id && (
+                    {isTeamScopedManager && user.team_id && (
                       <p className="text-xs text-muted-foreground text-center">
                         Members from <span className="font-medium">{getTeamName(user.team_id)}</span>
                       </p>
