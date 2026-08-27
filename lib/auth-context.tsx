@@ -33,6 +33,7 @@ interface AuthContextType {
     role?: UserRole
   ) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>
   resendConfirmation: (email: string) => Promise<{ success: boolean; error?: string }>
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   isLoading: boolean
   refreshProfile: () => Promise<void>
@@ -196,6 +197,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const requestPasswordReset = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) return { success: false, error: error.message }
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: "An unexpected error occurred" }
+    }
+  }
+
   const logout = async () => {
     // 'local' scope clears localStorage immediately without waiting for the
     // server revocation network call, preventing the logout from hanging.
@@ -206,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, login, signup, resendConfirmation, logout, isLoading, refreshProfile }}
+      value={{ user, profile, login, signup, resendConfirmation, requestPasswordReset, logout, isLoading, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
