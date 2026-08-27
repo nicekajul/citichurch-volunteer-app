@@ -22,7 +22,6 @@ import {
   Video,
   Clock,
   Send,
-  Church,
   ArrowRight,
 } from "lucide-react"
 
@@ -128,7 +127,7 @@ export default function PublicApplyPage() {
   // ── Success state ──────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="dark min-h-screen bg-background flex flex-col">
         <PublicHeader />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full text-center space-y-6">
@@ -173,7 +172,7 @@ export default function PublicApplyPage() {
 
   // ── Main form ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="dark min-h-screen bg-background flex flex-col">
       <PublicHeader />
 
       {/* Hero band */}
@@ -493,10 +492,11 @@ function PublicHeader() {
     <header className="border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-20">
       <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold text-foreground">
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-            <Church className="w-4 h-4 text-primary-foreground" />
-          </div>
-          Citichurch
+          <img
+            src="/logo-citichurch.png"
+            alt="Citichurch"
+            className="h-7 w-auto object-contain"
+          />
         </Link>
         <Link href="/login">
           <Button variant="ghost" size="sm" className="gap-2 text-sm">
