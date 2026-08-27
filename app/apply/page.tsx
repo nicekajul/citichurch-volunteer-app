@@ -131,7 +131,7 @@ export default function PublicApplyPage() {
   // ── Success state ──────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="dark min-h-screen bg-background flex flex-col">
+      <div className="dark min-h-screen bg-background text-foreground flex flex-col">
         <PublicHeader />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full text-center space-y-6">
@@ -176,7 +176,7 @@ export default function PublicApplyPage() {
 
   // ── Main form ──────────────────────────────────────────────────────────────
   return (
-    <div className="dark min-h-screen bg-background flex flex-col">
+    <div className="dark min-h-screen bg-background text-foreground flex flex-col">
       <PublicHeader />
 
       {/* Hero band */}
