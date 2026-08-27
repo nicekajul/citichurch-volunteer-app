@@ -1262,7 +1262,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
       const mapped: MinistryApplication[] = (data || []).map((a: any) => ({
         id: a.id,
-        applicantId: a.applicant_id,
+        applicantId: a.applicant_id || undefined,
         teamId: a.team_id,
         motivation: a.motivation,
         experience: a.experience || "",
@@ -1272,6 +1272,9 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         reviewNotes: a.review_notes || undefined,
         createdAt: a.created_at,
         updatedAt: a.updated_at,
+        applicantName: a.applicant_name || undefined,
+        applicantEmail: a.applicant_email || undefined,
+        applicantPhone: a.applicant_phone || undefined,
       }))
 
       setMinistryApplications(mapped)
@@ -1409,8 +1412,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
     if (error) throw new Error(error.message)
 
-    // If approved, assign the volunteer to the team
-    if (status === "approved") {
+    // If approved, assign the volunteer to the team (only possible for applicants
+    // who already have an account -- walk-in applicants via the public /apply form
+    // have no profile yet, so there's nothing to assign or notify).
+    if (status === "approved" && application.applicantId) {
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ team_id: application.teamId, status: "active" })
@@ -1422,17 +1427,19 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
 
     await refreshApplications()
 
-    // Notify the applicant of the decision
-    const teamName = teams.find((t) => t.id === application.teamId)?.name || "the team"
-    await pushNotifications([{
-      user_id: application.applicantId,
-      title: status === "approved" ? "Application Approved! 🎉" : "Application Update",
-      message: status === "approved"
-        ? `Welcome to ${teamName}! Your application has been approved. You can now access your team dashboard.`
-        : `Your application for ${teamName} was not approved this time.${notes ? ` Note: ${notes}` : ""}`,
-      type: "application",
-      link: "/dashboard",
-    }])
+    // Notify the applicant of the decision (only if they have an account)
+    if (application.applicantId) {
+      const teamName = teams.find((t) => t.id === application.teamId)?.name || "the team"
+      await pushNotifications([{
+        user_id: application.applicantId,
+        title: status === "approved" ? "Application Approved! 🎉" : "Application Update",
+        message: status === "approved"
+          ? `Welcome to ${teamName}! Your application has been approved. You can now access your team dashboard.`
+          : `Your application for ${teamName} was not approved this time.${notes ? ` Note: ${notes}` : ""}`,
+        type: "application",
+        link: "/dashboard",
+      }])
+    }
   }
 
   // Helper functions (client-side filtering)

@@ -147,7 +147,7 @@ export interface AppNotification {
 
 export interface MinistryApplication {
   id: string
-  applicantId: string
+  applicantId?: string
   teamId: string
   motivation: string
   experience: string
@@ -157,6 +157,11 @@ export interface MinistryApplication {
   reviewNotes?: string
   createdAt: string
   updatedAt: string
+  // Set for walk-in applicants who applied via the public /apply form without
+  // an existing account (applicantId is null in that case).
+  applicantName?: string
+  applicantEmail?: string
+  applicantPhone?: string
 }
 
 // Initial Data

@@ -128,7 +128,10 @@ export default function ApplicationsPage() {
     { key: "rejected", label: "Rejected" },
   ]
 
-  const selectedApplicant = selectedApp ? getApplicant(selectedApp.applicantId) : null
+  const selectedApplicant = selectedApp?.applicantId ? getApplicant(selectedApp.applicantId) : undefined
+  const selectedApplicantName = selectedApplicant?.name || selectedApp?.applicantName || "Unknown"
+  const selectedApplicantEmail = selectedApplicant?.email || selectedApp?.applicantEmail
+  const selectedApplicantPhone = selectedApp?.applicantPhone
   const selectedTeam = selectedApp ? getTeam(selectedApp.teamId) : null
 
   return (
@@ -193,7 +196,9 @@ export default function ApplicationsPage() {
         ) : (
           <div className="space-y-2">
             {filtered.map((app) => {
-              const applicant = getApplicant(app.applicantId)
+              const applicant = app.applicantId ? getApplicant(app.applicantId) : undefined
+              const applicantName = applicant?.name || app.applicantName || "Unknown"
+              const applicantEmail = applicant?.email || app.applicantEmail
               const team = getTeam(app.teamId)
               const Icon = teamIconMap[team?.icon || ""] || Users
               const cfg = statusConfig[app.status]
@@ -209,15 +214,15 @@ export default function ApplicationsPage() {
                     <div className="flex items-center gap-4">
                       {/* Applicant */}
                       <Avatar className="w-10 h-10 flex-shrink-0">
-                        <AvatarImage src={applicant?.avatar} alt={applicant?.name} />
-                        <AvatarFallback>{applicant?.name?.charAt(0) || "?"}</AvatarFallback>
+                        <AvatarImage src={applicant?.avatar} alt={applicantName} />
+                        <AvatarFallback>{applicantName.charAt(0)}</AvatarFallback>
                       </Avatar>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-sm">{applicant?.name || "Unknown"}</p>
-                            <p className="text-xs text-muted-foreground">{applicant?.email}</p>
+                            <p className="font-semibold text-sm">{applicantName}</p>
+                            <p className="text-xs text-muted-foreground">{applicantEmail}</p>
                           </div>
                           <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 whitespace-nowrap", cfg.className)}>
                             <StatusIcon className="w-3 h-3" />
@@ -276,12 +281,18 @@ export default function ApplicationsPage() {
               {/* Applicant info */}
               <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 <Avatar className="w-10 h-10">
-                  <AvatarImage src={selectedApplicant?.avatar} alt={selectedApplicant?.name} />
-                  <AvatarFallback>{selectedApplicant?.name?.charAt(0)}</AvatarFallback>
+                  <AvatarImage src={selectedApplicant?.avatar} alt={selectedApplicantName} />
+                  <AvatarFallback>{selectedApplicantName.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold text-sm">{selectedApplicant?.name}</p>
-                  <p className="text-xs text-muted-foreground">{selectedApplicant?.email}</p>
+                  <p className="font-semibold text-sm">{selectedApplicantName}</p>
+                  <p className="text-xs text-muted-foreground">{selectedApplicantEmail}</p>
+                  {selectedApplicantPhone && (
+                    <p className="text-xs text-muted-foreground">{selectedApplicantPhone}</p>
+                  )}
+                  {!selectedApplicant && (
+                    <p className="text-xs text-muted-foreground italic mt-0.5">Walk-in applicant (no account yet)</p>
+                  )}
                 </div>
                 <div className="ml-auto">
                   <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium", statusConfig[selectedApp.status].className)}>
