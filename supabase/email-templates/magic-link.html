@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your sign-in link</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0d0d0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#0d0d0d;">
+    <tr>
+      <td align="center" style="padding:48px 16px;">
+
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:580px;background-color:#141414;border-radius:20px;overflow:hidden;border:1px solid #252525;">
+
+          <!-- ── Header ── -->
+          <tr>
+            <td style="background:#000000;padding:44px 40px 40px;text-align:center;">
+              <img
+                src="https://www.citichurch.ph/wp-content/uploads/2019/07/logo-citichurch.png"
+                alt="Citichurch Production Ministry"
+                width="220"
+                style="display:block;margin:0 auto 6px;max-width:220px;height:auto;filter:brightness(0) invert(1);"
+              />
+              <p style="margin:0;color:rgba(255,255,255,0.65);font-size:13px;letter-spacing:0.5px;text-transform:uppercase;font-weight:500;">Production Ministry</p>
+            </td>
+          </tr>
+
+          <!-- ── Body ── -->
+          <tr>
+            <td style="padding:40px 40px 32px;">
+
+              <h2 style="margin:0 0 10px;color:#f0f0f0;font-size:22px;font-weight:700;line-height:1.3;">Your sign-in link</h2>
+              <p style="margin:0 0 32px;color:#888888;font-size:15px;line-height:1.7;">
+                Click below to sign in to your <strong style="color:#9A1418;">Citichurch Production Ministry</strong> account. This link is valid for <strong style="color:#e0e0e0;">1 hour</strong> and can only be used once.
+              </p>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td align="center" style="padding-bottom:32px;">
+                    <a href="{{ .ConfirmationURL }}"
+                       style="display:inline-block;background:#9A1418;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:15px 40px;border-radius:12px;letter-spacing:0.2px;">
+                      Sign In →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- OTP fallback -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#0f0f0f;border:1px solid #1f1f1f;border-radius:14px;">
+                <tr>
+                  <td style="padding:18px 20px;text-align:center;">
+                    <p style="margin:0 0 8px;color:#606060;font-size:12px;text-transform:uppercase;letter-spacing:0.6px;">Or enter this code</p>
+                    <p style="margin:0;color:#f0f0f0;font-size:26px;font-weight:700;letter-spacing:6px;">{{ .Token }}</p>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- ── Footer ── -->
+          <tr>
+            <td style="padding:24px 40px;background-color:#0f0f0f;border-top:1px solid #1f1f1f;">
+              <p style="margin:0 0 8px;color:#505050;font-size:12px;text-align:center;line-height:1.6;">
+                If you didn't request this sign-in link, you can safely ignore this email — no changes were made to your account.
+              </p>
+              <p style="margin:0 0 4px;color:#505050;font-size:12px;text-align:center;">
+                Having trouble with the button? Copy and paste this link:
+              </p>
+              <p style="margin:0 0 16px;color:#9A1418;font-size:12px;text-align:center;word-break:break-all;">{{ .ConfirmationURL }}</p>
+              <p style="margin:0;color:#9A1418;font-size:11px;text-align:center;">
+                © 2025 Citichurch Production Ministry · All rights reserved
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
