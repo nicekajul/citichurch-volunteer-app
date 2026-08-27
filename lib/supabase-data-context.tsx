@@ -1394,52 +1394,19 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   }
 
   const reviewApplication = async (id: string, status: "approved" | "rejected", notes: string) => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const currentUserId = sessionData?.session?.user?.id
-
-    // Get the application to find applicant + team
-    const application = ministryApplications.find((a) => a.id === id)
-    if (!application) throw new Error("Application not found")
-
-    const { error } = await supabase
-      .from("ministry_applications")
-      .update({
-        status,
-        reviewed_by: currentUserId,
-        review_notes: notes,
-      })
-      .eq("id", id)
-
-    if (error) throw new Error(error.message)
-
-    // If approved, assign the volunteer to the team (only possible for applicants
-    // who already have an account -- walk-in applicants via the public /apply form
-    // have no profile yet, so there's nothing to assign or notify).
-    if (status === "approved" && application.applicantId) {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ team_id: application.teamId, status: "active" })
-        .eq("id", application.applicantId)
-
-      if (profileError) console.error("Error assigning volunteer to team:", profileError)
-      await refreshUsers()
-    }
+    // Routed through a server endpoint because approving a walk-in applicant
+    // (no existing account) needs to create + invite an auth user, which
+    // requires the service-role key and can't run in the browser.
+    const res = await fetch("/api/admin/applications/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ applicationId: id, status, notes }),
+    })
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error || "Failed to review application")
 
     await refreshApplications()
-
-    // Notify the applicant of the decision (only if they have an account)
-    if (application.applicantId) {
-      const teamName = teams.find((t) => t.id === application.teamId)?.name || "the team"
-      await pushNotifications([{
-        user_id: application.applicantId,
-        title: status === "approved" ? "Application Approved! 🎉" : "Application Update",
-        message: status === "approved"
-          ? `Welcome to ${teamName}! Your application has been approved. You can now access your team dashboard.`
-          : `Your application for ${teamName} was not approved this time.${notes ? ` Note: ${notes}` : ""}`,
-        type: "application",
-        link: "/dashboard",
-      }])
-    }
+    if (status === "approved") await refreshUsers()
   }
 
   // Helper functions (client-side filtering)

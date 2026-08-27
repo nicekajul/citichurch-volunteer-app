@@ -377,6 +377,12 @@ export default function ApplicationsPage() {
                     <p className="text-sm text-red-500">{actionError}</p>
                   )}
 
+                  <p className="text-xs text-muted-foreground">
+                    {selectedApplicant
+                      ? `Approving will assign ${selectedApplicantName} to ${selectedTeam?.name || "the team"}.`
+                      : `Approving will create an account for ${selectedApplicantName} and email an invite to ${selectedApplicantEmail} to set a password and join ${selectedTeam?.name || "the team"}.`}
+                  </p>
+
                   <div className="flex gap-3">
                     <Button
                       variant="outline"
@@ -393,13 +399,9 @@ export default function ApplicationsPage() {
                       onClick={() => handleReview("approved")}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
-                      {isSubmitting ? "Processing..." : "Approve & Assign"}
+                      {isSubmitting ? "Processing..." : selectedApplicant ? "Approve & Assign" : "Approve & Invite"}
                     </Button>
                   </div>
-
-                  <p className="text-xs text-muted-foreground text-center">
-                    Approving will automatically add the volunteer to the {selectedTeam?.name} team and notify their supervisor.
-                  </p>
                 </div>
               )}
             </div>
