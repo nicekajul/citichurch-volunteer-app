@@ -20,7 +20,11 @@ import {
   Camera,
   Mic,
   Video,
-  Clock,
+  Music,
+  PenTool,
+  Theater,
+  Baby,
+  Globe,
   Send,
   ArrowRight,
 } from "lucide-react"
@@ -28,7 +32,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  Radio, Lightbulb, Monitor, Volume2, Palette, Camera, Mic, Video, Users,
+  Radio, Lightbulb, Monitor, Volume2, Palette, Camera, Mic, Video, Music, PenTool, Theater, Baby, Globe, Users,
 }
 
 const AVAILABILITY_OPTIONS = [
@@ -260,7 +264,7 @@ export default function PublicApplyPage() {
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm">{team.name}</p>
+                          <p className="font-semibold text-sm text-foreground">{team.name}</p>
                           {team.description && (
                             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{team.description}</p>
                           )}
@@ -390,7 +394,7 @@ export default function PublicApplyPage() {
                         {checked && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}
                       </div>
                       <div>
-                        <p className="text-sm font-medium">{opt.label}</p>
+                        <p className="text-sm font-medium text-foreground">{opt.label}</p>
                         <p className="text-xs text-muted-foreground">{opt.sublabel}</p>
                       </div>
                     </button>

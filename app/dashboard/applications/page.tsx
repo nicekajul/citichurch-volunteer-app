@@ -30,6 +30,11 @@ import {
   Camera,
   Mic,
   Video,
+  Music,
+  PenTool,
+  Theater,
+  Baby,
+  Globe,
   CalendarDays,
   Filter,
   ClipboardList,
@@ -39,7 +44,7 @@ import { useRouter } from "next/navigation"
 import type { MinistryApplication } from "@/lib/data"
 
 const teamIconMap: Record<string, React.ElementType> = {
-  Radio, Lightbulb, Monitor, Volume2, Palette, Camera, Mic, Video, Users,
+  Radio, Lightbulb, Monitor, Volume2, Palette, Camera, Mic, Video, Music, PenTool, Theater, Baby, Globe, Users,
 }
 
 const AVAILABILITY_LABELS: Record<string, string> = {

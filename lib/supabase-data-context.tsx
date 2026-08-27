@@ -130,7 +130,7 @@ function mapTeam(team: any): Team {
     description: team.description || "",
     leaderId: team.leader_id || undefined,
     color: team.color || "#3b82f6",
-    icon: "Users",
+    icon: team.icon || "Users",
     requirements: [],
   }
 }
@@ -737,6 +737,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         description: team.description,
         leader_id: team.leaderId,
         color: team.color,
+        icon: team.icon,
       })
       .select()
       .single()
@@ -753,6 +754,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         description: updates.description,
         leader_id: updates.leaderId,
         color: updates.color,
+        icon: updates.icon,
       })
       .eq("id", id)
 

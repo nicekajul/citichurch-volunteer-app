@@ -21,6 +21,11 @@ import {
   Volume2,
   Palette,
   Camera,
+  Music,
+  PenTool,
+  Theater,
+  Baby,
+  Globe,
   ArrowRight,
   CheckCircle2,
   Clock,
@@ -37,6 +42,11 @@ const teamIcons: Record<string, React.ElementType> = {
   Volume2: Volume2,
   Palette: Palette,
   Camera: Camera,
+  Music: Music,
+  PenTool: PenTool,
+  Theater: Theater,
+  Baby: Baby,
+  Globe: Globe,
 }
 
 export default function AdminDashboard() {

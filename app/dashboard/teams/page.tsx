@@ -37,6 +37,11 @@ import {
   Volume2,
   Palette,
   Camera,
+  Music,
+  PenTool,
+  Theater,
+  Baby,
+  Globe,
   Search,
   MoreVertical,
   Mail,
@@ -51,6 +56,11 @@ const teamIcons: Record<string, React.ElementType> = {
   Volume2: Volume2,
   Palette: Palette,
   Camera: Camera,
+  Music: Music,
+  PenTool: PenTool,
+  Theater: Theater,
+  Baby: Baby,
+  Globe: Globe,
 }
 
 export default function TeamsPage() {
@@ -174,12 +184,17 @@ export default function TeamsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Radio">Radio</SelectItem>
-                        <SelectItem value="Lightbulb">Lightbulb</SelectItem>
-                        <SelectItem value="Monitor">Monitor</SelectItem>
-                        <SelectItem value="Volume2">Volume</SelectItem>
+                        <SelectItem value="Music">Music (Worship)</SelectItem>
+                        <SelectItem value="Radio">Radio (Broadcast)</SelectItem>
+                        <SelectItem value="PenTool">Pen Tool (Graphic Design)</SelectItem>
+                        <SelectItem value="Monitor">Monitor (Media & Display)</SelectItem>
+                        <SelectItem value="Volume2">Volume (Audio)</SelectItem>
+                        <SelectItem value="Lightbulb">Lightbulb (Lights)</SelectItem>
+                        <SelectItem value="Theater">Theater (Stage Management)</SelectItem>
+                        <SelectItem value="Camera">Camera (Photography)</SelectItem>
+                        <SelectItem value="Baby">Baby (Citichamp)</SelectItem>
+                        <SelectItem value="Globe">Globe (Website Dev)</SelectItem>
                         <SelectItem value="Palette">Palette</SelectItem>
-                        <SelectItem value="Camera">Camera</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
