@@ -10,6 +10,14 @@ const supabaseAdmin = createAdminClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
+// Plain (anon-key) client — used only for the resetPasswordForEmail fallback
+// below, which is a public auth method, not an admin one.
+const supabaseAnon = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+)
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -48,15 +56,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // inviteUserByEmail is safe to call again on an existing, still-unconfirmed
-    // auth user — it just issues a fresh 24-hour link.
     const origin = new URL(request.url).origin
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(profile.email, {
       data: { name: profile.name || undefined, role: "volunteer" },
       redirectTo: `${origin}/set-password`,
     })
+
     if (inviteError) {
-      return NextResponse.json({ error: `Failed to resend invite: ${inviteError.message}` }, { status: 500 })
+      // inviteUserByEmail always fails with "already registered" here, because
+      // the original invite already created the auth user -- it's just still
+      // unconfirmed/passwordless. There's no "re-invite" admin API for that
+      // case, so fall back to a password-recovery email instead, which works
+      // regardless of confirmation status and lands on the same /set-password
+      // page (it only cares whether a valid session came back).
+      const alreadyRegistered = /already registered|already exists/i.test(inviteError.message)
+      if (!alreadyRegistered) {
+        return NextResponse.json({ error: `Failed to resend invite: ${inviteError.message}` }, { status: 500 })
+      }
+      const { error: resetError } = await supabaseAnon.auth.resetPasswordForEmail(profile.email, {
+        redirectTo: `${origin}/set-password`,
+      })
+      if (resetError) {
+        return NextResponse.json({ error: `Failed to resend invite: ${resetError.message}` }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ success: true })

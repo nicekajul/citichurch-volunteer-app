@@ -2,7 +2,9 @@
 
 import type React from "react"
 
+import { useState } from "react"
 import { useData } from "@/lib/data-context"
+import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/dashboard/header"
 import { StatsCard } from "@/components/dashboard/stats-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -10,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Users,
   Video,
@@ -32,6 +35,7 @@ import {
   AlertCircle,
   UserX,
   MailWarning,
+  Send,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -50,7 +54,25 @@ const teamIcons: Record<string, React.ElementType> = {
 }
 
 export default function AdminDashboard() {
-  const { users, teams, trainingVideos, trainingProgress, announcements, ministryApplications } = useData()
+  const { user } = useAuth()
+  const { users, teams, trainingVideos, trainingProgress, announcements, ministryApplications, resendInvite } = useData()
+
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [resendResult, setResendResult] = useState<{ type: "success" | "error"; message: string } | null>(null)
+
+  const handleResendInvite = async (volunteerId: string) => {
+    setResendingId(volunteerId)
+    setResendResult(null)
+    try {
+      await resendInvite(volunteerId)
+      setResendResult({ type: "success", message: "Invite resent — a fresh link is on its way." })
+    } catch (e) {
+      setResendResult({ type: "error", message: e instanceof Error ? e.message : "Failed to resend invite." })
+    } finally {
+      setResendingId(null)
+      setTimeout(() => setResendResult(null), 5000)
+    }
+  }
 
   const volunteers = users.filter((u) => u.role === "volunteer" || u.role === "leader")
   const activeVolunteers = volunteers.filter((u) => u.status === "active")
@@ -93,6 +115,12 @@ export default function AdminDashboard() {
       <Header title="Admin Dashboard" subtitle="Overview of Production Ministry" />
 
       <div className="p-4 lg:p-6 space-y-6">
+        {resendResult && (
+          <Alert variant={resendResult.type === "error" ? "destructive" : "default"} className="py-2">
+            <AlertDescription>{resendResult.message}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard
@@ -344,10 +372,24 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         {isUnconfirmed ? (
-                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 gap-1 text-xs">
-                            <MailWarning className="w-3 h-3" />
-                            Pending Confirmation
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 gap-1 text-xs">
+                              <MailWarning className="w-3 h-3" />
+                              Pending Confirmation
+                            </Badge>
+                            {user?.role === "admin" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                disabled={resendingId === volunteer.id}
+                                onClick={() => handleResendInvite(volunteer.id)}
+                              >
+                                <Send className="w-3 h-3 mr-1" />
+                                {resendingId === volunteer.id ? "Resending…" : "Resend"}
+                              </Button>
+                            )}
+                          </div>
                         ) : (
                           <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs">
                             Pending Activation
