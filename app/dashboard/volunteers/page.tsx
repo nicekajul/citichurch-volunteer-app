@@ -189,7 +189,9 @@ export default function VolunteersPage() {
                   <UserCheck className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{volunteers.filter((v) => v.status === "active").length}</p>
+                  <p className="text-2xl font-bold">
+                    {volunteers.filter((v) => v.emailConfirmed && v.status === "active").length}
+                  </p>
                   <p className="text-xs text-muted-foreground">Active</p>
                 </div>
               </div>

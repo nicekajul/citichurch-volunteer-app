@@ -75,7 +75,7 @@ export default function AdminDashboard() {
   }
 
   const volunteers = users.filter((u) => u.role === "volunteer" || u.role === "leader")
-  const activeVolunteers = volunteers.filter((u) => u.status === "active")
+  const activeVolunteers = volunteers.filter((u) => u.emailConfirmed && u.status === "active")
   const pendingConfirmation = volunteers.filter((u) => !u.emailConfirmed)
   const pendingActivation = volunteers.filter((u) => u.emailConfirmed && u.status === "pending")
   const pendingVolunteers = [...pendingConfirmation, ...pendingActivation]
