@@ -21,7 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown, HelpCircle, CalendarCheck } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -92,7 +92,17 @@ export default function SchedulePage() {
   const [declineReason, setDeclineReason] = useState("")
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
 
+  // Availability overview state — read-only, lets admins/leaders see who's
+  // free for a date without needing to build a schedule around it first.
+  const todayStr = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  })()
+  const [overviewDate, setOverviewDate] = useState(todayStr)
+  const [overviewTeam, setOverviewTeam] = useState("all")
+
   const canCreate = user?.role === "admin" || isTeamScopedManager
+  const canSeeAvailabilityOverview = user?.role === "admin" || isTeamScopedManager
 
   const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.team_id)
 
@@ -268,6 +278,21 @@ export default function SchedulePage() {
     .filter((s) => parseDate(s.date) < today)
     .sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime())
     .slice(0, 10)
+
+  // ── Availability overview ───────────────────────────────────────────────────
+  // Leaders/delegated schedulers are locked to their own team; admins can pick
+  // any team or leave it unset to see everyone. Read-only — never writes
+  // availability, so it can't conflict with the volunteer's own My Availability page.
+  const overviewMembers = users.filter((u) => {
+    if (u.role !== "volunteer" && u.role !== "leader") return false
+    if (isTeamScopedManager) return u.teamId === user?.team_id
+    if (overviewTeam !== "all") return u.teamId === overviewTeam
+    return true
+  })
+
+  const overviewAvailable = overviewMembers.filter((m) => getAvailabilityForDate(m.id, overviewDate)?.status === "available")
+  const overviewUnavailable = overviewMembers.filter((m) => getAvailabilityForDate(m.id, overviewDate)?.status === "unavailable")
+  const overviewNotSet = overviewMembers.filter((m) => !getAvailabilityForDate(m.id, overviewDate))
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -934,6 +959,116 @@ export default function SchedulePage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Availability Overview — quick read-only check of who's free for a
+            given date, independent of building/editing any schedule. */}
+        {canSeeAvailabilityOverview && (
+          <Card className="border-border/50">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CalendarCheck className="h-4 w-4 text-primary" />
+                <CardTitle className="text-lg">Availability Overview</CardTitle>
+              </div>
+              <CardDescription>
+                See who's marked themselves available for a date, before you build a schedule around it
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="overview-date" className="text-xs text-muted-foreground">Date</Label>
+                  <Input
+                    id="overview-date"
+                    type="date"
+                    value={overviewDate}
+                    onChange={(e) => setOverviewDate(e.target.value)}
+                    className="dark:[color-scheme:dark] w-[160px]"
+                  />
+                </div>
+                {user?.role === "admin" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Team</Label>
+                    <Select value={overviewTeam} onValueChange={setOverviewTeam}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="All teams" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All teams</SelectItem>
+                        {teams.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {overviewMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No team members to show.</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-green-600">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Available ({overviewAvailable.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {overviewAvailable.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No one yet</p>
+                      )}
+                      {overviewAvailable.map((m) => (
+                        <Badge key={m.id} className="bg-green-500/10 text-green-700 border-green-200 dark:text-green-400 font-normal">
+                          {m.name.split(" ")[0]}
+                          {!isTeamScopedManager && overviewTeam === "all" && m.teamId && (
+                            <span className="ml-1 opacity-60">· {getTeamName(m.teamId)}</span>
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-red-600">
+                      <XCircle className="h-3.5 w-3.5" />
+                      Unavailable ({overviewUnavailable.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {overviewUnavailable.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No one yet</p>
+                      )}
+                      {overviewUnavailable.map((m) => (
+                        <Badge key={m.id} className="bg-red-500/10 text-red-700 border-red-200 dark:text-red-400 font-normal">
+                          {m.name.split(" ")[0]}
+                          {!isTeamScopedManager && overviewTeam === "all" && m.teamId && (
+                            <span className="ml-1 opacity-60">· {getTeamName(m.teamId)}</span>
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                      <HelpCircle className="h-3.5 w-3.5" />
+                      Not set ({overviewNotSet.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {overviewNotSet.length === 0 && (
+                        <p className="text-xs text-muted-foreground">Everyone's responded</p>
+                      )}
+                      {overviewNotSet.map((m) => (
+                        <Badge key={m.id} variant="outline" className="font-normal text-muted-foreground">
+                          {m.name.split(" ")[0]}
+                          {!isTeamScopedManager && overviewTeam === "all" && m.teamId && (
+                            <span className="ml-1 opacity-60">· {getTeamName(m.teamId)}</span>
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Calendar */}
