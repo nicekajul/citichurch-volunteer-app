@@ -21,7 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown, HelpCircle, CalendarCheck } from "lucide-react"
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown, HelpCircle, CalendarCheck, Copy, Check } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -91,6 +91,9 @@ export default function SchedulePage() {
   const [isDeclining, setIsDeclining] = useState(false)
   const [declineReason, setDeclineReason] = useState("")
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
+
+  // Copy-to-clipboard state (share roster details to Telegram/group chats)
+  const [copied, setCopied] = useState(false)
 
   // Availability overview state — read-only, lets admins/leaders see who's
   // free for a date without needing to build a schedule around it first.
@@ -194,6 +197,7 @@ export default function SchedulePage() {
     setAddRole("")
     setIsDeclining(false)
     setDeclineReason("")
+    setCopied(false)
     setIsDetailOpen(true)
   }
 
@@ -238,6 +242,56 @@ export default function SchedulePage() {
       setDeclineReason("")
     } finally {
       setIsSubmittingResponse(false)
+    }
+  }
+
+  // Plain-text roster summary formatted for pasting into a group chat
+  // (Telegram, etc). Built from the live editFields/editAssignments state so
+  // it always reflects what's currently on screen (e.g. a response someone
+  // just confirmed/declined), not a stale copy of the schedule as first opened.
+  const buildScheduleShareText = () => {
+    const teamId = editAssignments[0]?.teamId
+    const lines: string[] = []
+    lines.push(`📋 ${editFields.service}`)
+    const dateTime = editFields.date
+      ? `${formatDate(editFields.date)}${formatTime(editFields.time) ? ` · ${formatTime(editFields.time)}` : ""}`
+      : ""
+    if (dateTime) lines.push(`📅 ${dateTime}`)
+    if (editFields.location) lines.push(`📍 ${editFields.location}`)
+    if (teamId) lines.push(`👥 Team: ${getTeamName(teamId)}`)
+
+    const active = editAssignments.filter((a) => a.status !== "declined")
+    const declined = editAssignments.filter((a) => a.status === "declined")
+
+    lines.push("")
+    lines.push("Assigned Volunteers:")
+    if (active.length === 0) {
+      lines.push("(none yet)")
+    } else {
+      active.forEach((a) => {
+        const statusTag = a.status === "confirmed" ? " ✅" : " (awaiting confirmation)"
+        lines.push(`• ${getUserName(a.userId)} — ${a.role}${statusTag}`)
+      })
+    }
+
+    if (declined.length > 0) {
+      lines.push("")
+      lines.push("Declined:")
+      declined.forEach((a) => {
+        lines.push(`• ${getUserName(a.userId)} — ${a.role}`)
+      })
+    }
+
+    return lines.join("\n")
+  }
+
+  const handleCopySchedule = async () => {
+    try {
+      await navigator.clipboard.writeText(buildScheduleShareText())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) {
+      console.error("Failed to copy schedule details:", e)
     }
   }
 
@@ -568,10 +622,18 @@ export default function SchedulePage() {
                     )}
                   </DialogDescription>
                 </div>
-                {canCreate && !isEditing && (
-                  <Button variant="outline" size="sm" className="mt-1" onClick={() => setIsEditing(true)}>
-                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                  </Button>
+                {!isEditing && detailSchedule && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Button variant="outline" size="sm" onClick={handleCopySchedule}>
+                      {copied ? <Check className="h-3 w-3 mr-1 text-green-600" /> : <Copy className="h-3 w-3 mr-1" />}
+                      {copied ? "Copied!" : "Copy"}
+                    </Button>
+                    {canCreate && (
+                      <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                        <Pencil className="h-3 w-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </DialogHeader>
