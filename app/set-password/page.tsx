@@ -51,13 +51,21 @@ export default function SetPasswordPage() {
 
     setIsLoading(true)
     const supabase = createClient()
-    const { error: updateError } = await supabase.auth.updateUser({ password })
-    setIsLoading(false)
+    const { data: updateData, error: updateError } = await supabase.auth.updateUser({ password })
 
     if (updateError) {
+      setIsLoading(false)
       setError(updateError.message)
       return
     }
+
+    // Account is only really usable from this point on -- flip the profile
+    // out of "pending" now that the invite has actually been completed.
+    if (updateData.user) {
+      await supabase.from("profiles").update({ status: "active" }).eq("id", updateData.user.id)
+    }
+
+    setIsLoading(false)
     setSuccess(true)
     setTimeout(() => router.push("/dashboard"), 1500)
   }

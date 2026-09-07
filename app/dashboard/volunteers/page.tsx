@@ -22,14 +22,18 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Search, Calendar, CheckCircle, Clock, UserCheck, MoreVertical, Eye, Users, Crown, MailWarning } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Plus, Search, Calendar, CheckCircle, CheckCircle2, Clock, UserCheck, MoreVertical, Eye, Users, Crown, MailWarning, AlertCircle, Send } from "lucide-react"
 import { VolunteerBadges } from "@/components/volunteer-badges"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 
 export default function VolunteersPage() {
   const { user } = useAuth()
-  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, assignUserToTeam, assignTeamLeader, approveProgress } = useData()
+  const { users, teams, trainingProgress, trainingVideos, updateUser, addUser, assignUserToTeam, assignTeamLeader, approveProgress, resendInvite } = useData()
+
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [resendResult, setResendResult] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterTeam, setFilterTeam] = useState<string>("all")
@@ -116,6 +120,20 @@ export default function VolunteersPage() {
     updateUser(volunteerId, { status: "active" })
   }
 
+  const handleResendInvite = async (volunteerId: string) => {
+    setResendingId(volunteerId)
+    setResendResult(null)
+    try {
+      await resendInvite(volunteerId)
+      setResendResult({ type: "success", message: "Invite resent — a fresh link is on its way." })
+    } catch (e) {
+      setResendResult({ type: "error", message: e instanceof Error ? e.message : "Failed to resend invite." })
+    } finally {
+      setResendingId(null)
+      setTimeout(() => setResendResult(null), 5000)
+    }
+  }
+
   const openAssignTeam = (v: { id: string; name: string; teamId?: string }) => {
     setAssignTeamVolunteer({ id: v.id, name: v.name, currentTeamId: v.teamId })
     setAssignTeamId(v.teamId || "")
@@ -155,6 +173,13 @@ export default function VolunteersPage() {
       <Header title="Volunteers" subtitle={user?.role === "admin" ? "Manage all volunteers" : "Your team members"} />
 
       <div className="p-4 lg:p-6 space-y-6">
+        {resendResult && (
+          <Alert variant={resendResult.type === "error" ? "destructive" : "default"} className="py-2">
+            {resendResult.type === "error" ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            <AlertDescription>{resendResult.message}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-border/50">
@@ -582,6 +607,15 @@ export default function VolunteersPage() {
                               <DropdownMenuItem onClick={() => handleApproveAll(volunteer.id)}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
                                 Approve All Training
+                              </DropdownMenuItem>
+                            )}
+                            {user?.role === "admin" && volunteer.status === "pending" && (
+                              <DropdownMenuItem
+                                onClick={() => handleResendInvite(volunteer.id)}
+                                disabled={resendingId === volunteer.id}
+                              >
+                                <Send className="w-4 h-4 mr-2" />
+                                {resendingId === volunteer.id ? "Resending…" : "Resend Invite"}
                               </DropdownMenuItem>
                             )}
                             {volunteer.status === "pending" && (

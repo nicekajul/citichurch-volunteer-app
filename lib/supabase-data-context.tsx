@@ -83,6 +83,7 @@ interface DataContextType {
   // Ministry Applications
   submitMinistryApplication: (data: { teamId: string; motivation: string; experience: string; availability: string[] }) => Promise<void>
   reviewApplication: (id: string, status: "approved" | "rejected", notes: string) => Promise<void>
+  resendInvite: (userId: string) => Promise<void>
 
   // Availability
   setMyAvailability: (entries: { date: string; status: "available" | "unavailable" }[]) => Promise<void>
@@ -1409,6 +1410,16 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     if (status === "approved") await refreshUsers()
   }
 
+  const resendInvite = async (userId: string) => {
+    const res = await fetch("/api/admin/users/resend-invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error || "Failed to resend invite")
+  }
+
   // Helper functions (client-side filtering)
   const getTeamMembers = (teamId: string) => {
     return users.filter((u) => u.teamId === teamId)
@@ -1497,6 +1508,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         respondToSchedule,
         submitMinistryApplication,
         reviewApplication,
+        resendInvite,
         setMyAvailability,
         clearMyAvailability,
         grantTeamPermission,

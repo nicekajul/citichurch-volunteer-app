@@ -105,9 +105,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (status === "approved" && applicantId) {
+      // A freshly invited user hasn't set a password yet -- keep them "pending"
+      // until they actually complete the invite link, so they don't show as
+      // active before their account is really usable. An existing-account
+      // applicant is already active and stays that way.
       const { error: profileError } = await supabaseAdmin
         .from("profiles")
-        .update({ team_id: application.team_id, status: "active" })
+        .update({ team_id: application.team_id, ...(invited ? { status: "pending" } : {}) })
         .eq("id", applicantId)
       if (profileError) {
         return NextResponse.json({ error: `Failed to assign team: ${profileError.message}` }, { status: 500 })
