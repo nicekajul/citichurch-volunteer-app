@@ -252,13 +252,11 @@ export default function SchedulePage() {
   const buildScheduleShareText = () => {
     const teamId = editAssignments[0]?.teamId
     const lines: string[] = []
-    lines.push(`📋 ${editFields.service}`)
-    const dateTime = editFields.date
-      ? `${formatDate(editFields.date)}${formatTime(editFields.time) ? ` · ${formatTime(editFields.time)}` : ""}`
-      : ""
-    if (dateTime) lines.push(`📅 ${dateTime}`)
-    if (editFields.location) lines.push(`📍 ${editFields.location}`)
-    if (teamId) lines.push(`👥 Team: ${getTeamName(teamId)}`)
+    lines.push(`Service: ${editFields.service}`)
+    if (editFields.date) lines.push(`Date: ${formatDate(editFields.date)}`)
+    if (formatTime(editFields.time)) lines.push(`Call Time: ${formatTime(editFields.time)}`)
+    if (editFields.location) lines.push(`Location: ${editFields.location}`)
+    if (teamId) lines.push(`Team: ${getTeamName(teamId)}`)
 
     const active = editAssignments.filter((a) => a.status !== "declined")
     const declined = editAssignments.filter((a) => a.status === "declined")
@@ -269,8 +267,8 @@ export default function SchedulePage() {
       lines.push("(none yet)")
     } else {
       active.forEach((a) => {
-        const statusTag = a.status === "confirmed" ? " ✅" : " (awaiting confirmation)"
-        lines.push(`• ${getUserName(a.userId)} — ${a.role}${statusTag}`)
+        const statusTag = a.status === "confirmed" ? " (Confirmed)" : " (Awaiting Confirmation)"
+        lines.push(`- ${getUserName(a.userId)} — ${a.role}${statusTag}`)
       })
     }
 
@@ -278,7 +276,7 @@ export default function SchedulePage() {
       lines.push("")
       lines.push("Declined:")
       declined.forEach((a) => {
-        lines.push(`• ${getUserName(a.userId)} — ${a.role}`)
+        lines.push(`- ${getUserName(a.userId)} — ${a.role}`)
       })
     }
 
