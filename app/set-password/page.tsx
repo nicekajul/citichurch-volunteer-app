@@ -22,18 +22,63 @@ export default function SetPasswordPage() {
   const [success, setSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
+  // Self-service recovery when the invite link is already expired/used --
+  // e.g. a mail provider prefetched it before the person clicked. Lets them
+  // request a fresh link without needing to track down an admin.
+  const [resendEmail, setResendEmail] = useState("")
+  const [isResending, setIsResending] = useState(false)
+  const [resendSent, setResendSent] = useState(false)
+
   const router = useRouter()
+
+  const handleResendInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsResending(true)
+    try {
+      await fetch("/api/auth/resend-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resendEmail }),
+      })
+    } finally {
+      setIsResending(false)
+      setResendSent(true)
+    }
+  }
 
   useEffect(() => {
     const supabase = createClient()
-    // The invite link's tokens are exchanged for a session automatically by
-    // the browser client on load; give it a moment before checking.
-    const check = async () => {
+
+    // Invite links land here with the session tokens in the URL hash
+    // (#access_token=...&refresh_token=...), not a `?code=` query param.
+    // @supabase/ssr's createBrowserClient hard-codes flowType: "pkce", which
+    // only auto-detects the `?code=` style -- it never picks up these hash
+    // tokens on its own, so the session silently never gets established.
+    // Parse and apply them manually instead of relying on detectSessionInUrl.
+    const establish = async () => {
+      const hash = window.location.hash
+      if (hash.includes("access_token")) {
+        const params = new URLSearchParams(hash.slice(1))
+        const access_token = params.get("access_token")
+        const refresh_token = params.get("refresh_token")
+        // Strip the tokens from the visible URL either way -- they're
+        // single-use and shouldn't linger in history/address bar.
+        window.history.replaceState(null, "", window.location.pathname)
+        if (access_token && refresh_token) {
+          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (!error && data.session) {
+            setHasSession(true)
+            setCheckingSession(false)
+            return
+          }
+        }
+      }
       const { data } = await supabase.auth.getSession()
       setHasSession(!!data.session)
       setCheckingSession(false)
     }
-    check()
+
+    establish()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,12 +138,47 @@ export default function SetPasswordPage() {
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : !hasSession ? (
-              <Alert variant="destructive" className="py-2">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  This invite link is invalid or has expired. Please contact your team leader for a new one.
-                </AlertDescription>
-              </Alert>
+              <div className="space-y-4">
+                <Alert variant="destructive" className="py-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    This invite link is invalid or has expired. This can happen if it was opened automatically by
+                    your email provider before you clicked it, or if too much time has passed.
+                  </AlertDescription>
+                </Alert>
+
+                {resendSent ? (
+                  <div className="text-center space-y-2 py-2">
+                    <CheckCircle2 className="w-8 h-8 text-primary mx-auto" />
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      If <span className="text-foreground font-medium">{resendEmail}</span> has a pending invite, a
+                      fresh link is on its way. Check your inbox.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleResendInvite} className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="resend-email">Get a new invite link</Label>
+                      <Input
+                        id="resend-email"
+                        type="email"
+                        placeholder="Enter the email you were invited with"
+                        value={resendEmail}
+                        onChange={(e) => setResendEmail(e.target.value)}
+                        required
+                        className="h-11"
+                      />
+                    </div>
+                    <Button type="submit" variant="outline" className="w-full h-11" disabled={isResending}>
+                      {isResending ? (
+                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        "Send Me a New Link"
+                      )}
+                    </Button>
+                  </form>
+                )}
+              </div>
             ) : success ? (
               <div className="text-center space-y-2 py-4">
                 <CheckCircle2 className="w-10 h-10 text-primary mx-auto" />

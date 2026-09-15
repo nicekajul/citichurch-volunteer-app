@@ -27,14 +27,37 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createClient()
-    // The reset link's tokens are exchanged for a session automatically by
-    // the browser client on load; give it a moment before checking.
-    const check = async () => {
+
+    // Reset links land here with the session tokens in the URL hash
+    // (#access_token=...&refresh_token=...), not a `?code=` query param.
+    // @supabase/ssr's createBrowserClient hard-codes flowType: "pkce", which
+    // only auto-detects the `?code=` style -- it never picks up these hash
+    // tokens on its own, so the session silently never gets established.
+    // Parse and apply them manually instead of relying on detectSessionInUrl.
+    const establish = async () => {
+      const hash = window.location.hash
+      if (hash.includes("access_token")) {
+        const params = new URLSearchParams(hash.slice(1))
+        const access_token = params.get("access_token")
+        const refresh_token = params.get("refresh_token")
+        // Strip the tokens from the visible URL either way -- they're
+        // single-use and shouldn't linger in history/address bar.
+        window.history.replaceState(null, "", window.location.pathname)
+        if (access_token && refresh_token) {
+          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (!error && data.session) {
+            setHasSession(true)
+            setCheckingSession(false)
+            return
+          }
+        }
+      }
       const { data } = await supabase.auth.getSession()
       setHasSession(!!data.session)
       setCheckingSession(false)
     }
-    check()
+
+    establish()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
