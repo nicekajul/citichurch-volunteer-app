@@ -92,7 +92,12 @@ export default function MyTeamPage() {
 
   const getMemberProgress = (memberId: string) => {
     const memberProg = trainingProgress.filter((p) => p.userId === memberId)
-    const completed = memberProg.filter((p) => p.completed).length
+    // Only count completions against modules still relevant to this team --
+    // a member moved in from another team can have stale "completed" rows
+    // for modules that don't apply here.
+    const completed = memberProg.filter(
+      (p) => p.completed && relevantVideos.some((v) => v.id === p.videoId)
+    ).length
     return {
       completed,
       total: relevantVideos.length,

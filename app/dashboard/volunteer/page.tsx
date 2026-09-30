@@ -59,7 +59,13 @@ export default function VolunteerDashboard() {
 
   // Get user's progress
   const myProgress = trainingProgress.filter((p) => p.userId === user.id)
-  const completedVideos = myProgress.filter((p) => p.completed)
+  // Only count completions against modules still relevant to the volunteer's
+  // current team -- a team reassignment (or a module moving teams) can leave
+  // "completed" progress rows for modules that no longer apply, which would
+  // otherwise inflate this count past relevantVideos.length.
+  const completedVideos = myProgress.filter(
+    (p) => p.completed && relevantVideos.some((v) => v.id === p.videoId)
+  )
   const approvedVideos = completedVideos.filter((p) => p.approvedBy)
 
   const overallProgress =

@@ -28,7 +28,13 @@ export default function MyTrainingPage() {
   const myTeam = teams.find((t) => t.id === user.team_id)
   const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
   const myProgress = trainingProgress.filter((p) => p.userId === user.id)
-  const completedVideos = myProgress.filter((p) => p.completed)
+  // Only count completions against modules still relevant to the volunteer's
+  // current team -- a team reassignment can leave "completed" rows for
+  // modules that no longer apply, which would otherwise inflate this count
+  // past relevantVideos.length.
+  const completedVideos = myProgress.filter(
+    (p) => p.completed && relevantVideos.some((v) => v.id === p.videoId)
+  )
 
   const overallProgress =
     relevantVideos.length > 0 ? Math.round((completedVideos.length / relevantVideos.length) * 100) : 0
