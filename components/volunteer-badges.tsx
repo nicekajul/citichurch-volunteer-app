@@ -227,10 +227,16 @@ interface VolunteerBadgesProps {
 }
 
 export function VolunteerBadges({ userId, size = "sm", variant = "badge", tooltip = true }: VolunteerBadgesProps) {
-  const { certificates, trainingProgress, trainingVideos } = useData()
+  const { certificates, trainingProgress, trainingVideos, users } = useData()
+  const teamId = users.find((u) => u.id === userId)?.teamId
 
   const tierData = useMemo(() => {
-    const tiers = [...certificates].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+    // Only tiers relevant to this volunteer's team -- otherwise a
+    // team-specific certificate (e.g. Broadcast Specialist) shows up for
+    // every volunteer regardless of which team they're actually on.
+    const tiers = certificates
+      .filter((cert) => !cert.teamId || cert.teamId === teamId)
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
     if (!tiers.length) return []
 
     const completedVideoIds = new Set(
@@ -260,7 +266,7 @@ export function VolunteerBadges({ userId, size = "sm", variant = "badge", toolti
       const locked      = !prevEarned && !earned
       return { cert, completed, total: tierModules.length, earned, locked }
     })
-  }, [certificates, trainingProgress, trainingVideos, userId])
+  }, [certificates, trainingProgress, trainingVideos, userId, teamId])
 
   if (!tierData.length) return null
 
@@ -285,9 +291,15 @@ export function VolunteerBadges({ userId, size = "sm", variant = "badge", toolti
 
 // ── Full-width panel for volunteer's own dashboard ────────────────────────────
 export function VolunteerBadgesPanel({ userId }: { userId: string }) {
-  const { certificates, trainingProgress, trainingVideos, getEarnedCertificates } = useData()
+  const { certificates, trainingProgress, trainingVideos, getEarnedCertificates, users } = useData()
+  const teamId = users.find((u) => u.id === userId)?.teamId
 
-  const tiers = [...certificates].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+  // Only tiers relevant to this volunteer's team -- otherwise a
+  // team-specific certificate (e.g. Broadcast Specialist) shows up on every
+  // volunteer's dashboard regardless of which team they're actually on.
+  const tiers = certificates
+    .filter((cert) => !cert.teamId || cert.teamId === teamId)
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
   if (!tiers.length) return null
 
   const earnedIds = new Set(getEarnedCertificates(userId).map((c) => c.id))
