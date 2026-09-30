@@ -316,7 +316,12 @@ export default function CertificatesPage() {
   const earnedCertificates = getEarnedCertificates(user.id)
   const earnedIds = new Set(earnedCertificates.map((c) => c.id))
 
-  const tiers = [...certificates].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+  // Only show tiers relevant to the volunteer's current team -- otherwise a
+  // team-specific certificate (e.g. Broadcast Specialist) leaks into every
+  // other team's roadmap regardless of membership.
+  const tiers = certificates
+    .filter((cert) => !cert.teamId || cert.teamId === user.team_id)
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
 
   const totalModules    = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id).length
   const completedCount  = [...completedIds].filter((id) =>
