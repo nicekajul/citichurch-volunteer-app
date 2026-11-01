@@ -95,6 +95,10 @@
 
 /* ── Tailwind theme tokens ────────────────────────────────────────────────── */
 @theme inline {
+  /* Century Gothic first (renders when the viewer has it installed locally --
+     it's a licensed font we can't host), then the free fallbacks. */
+  --font-sans:                      "Century Gothic", var(--font-montserrat), var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:                      var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   --color-background:               var(--background);
   --color-foreground:               var(--foreground);
   --color-card:                     var(--card);

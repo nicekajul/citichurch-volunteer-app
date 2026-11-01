@@ -56,7 +56,7 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+      <div className="dark min-h-screen flex items-center justify-center bg-background text-foreground p-4">
         <Card className="w-full max-w-md border-border/50 shadow-lg">
           <CardHeader className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-500/10 mb-4 mx-auto">
@@ -97,7 +97,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="dark min-h-screen flex items-center justify-center bg-background text-foreground p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Logo Section */}
         <div className="text-center space-y-2">

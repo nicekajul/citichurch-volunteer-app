@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="dark min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="dark min-h-screen flex items-center justify-center bg-background text-foreground p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <img
