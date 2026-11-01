@@ -102,7 +102,7 @@ interface DataContextType {
   // Schedule
   addServiceSchedule: (schedule: Omit<ServiceSchedule, "id">) => Promise<void>
   updateServiceSchedule: (id: string, updates: Partial<ServiceSchedule>) => Promise<void>
-  respondToSchedule: (scheduleId: string, response: "confirmed" | "declined", reason?: string) => Promise<void>
+  respondToSchedule: (scheduleId: string, response: "confirmed" | "declined", reason?: string, coverRequestUserId?: string) => Promise<void>
 
   // Ministry Applications
   submitMinistryApplication: (data: { teamId: string; motivation: string; experience: string; availability: string[] }) => Promise<void>
@@ -110,7 +110,7 @@ interface DataContextType {
   resendInvite: (userId: string) => Promise<void>
 
   // Availability
-  setMyAvailability: (entries: { date: string; status: "available" | "unavailable" }[]) => Promise<void>
+  setMyAvailability: (entries: { date: string; status: "available" | "unavailable"; note?: string }[]) => Promise<void>
   clearMyAvailability: (date: string) => Promise<void>
 
   // Delegated team permissions
@@ -1231,7 +1231,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const respondToSchedule = async (
     scheduleId: string,
     response: "confirmed" | "declined",
-    reason?: string
+    reason?: string,
+    coverRequestUserId?: string
   ) => {
     const { data: { session } } = await supabase.auth.getSession()
     const userId = session?.user?.id
@@ -1284,19 +1285,41 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
             link: "/dashboard/schedule",
           }])
         }
+
+        // Declining volunteer can tag a specific teammate to ask them to
+        // cover -- a direct notification, not an automatic reassignment;
+        // the leader still does the actual re-assigning.
+        if (response === "declined" && coverRequestUserId) {
+          const coverVolunteer = users.find((u) => u.id === coverRequestUserId)
+          if (coverVolunteer) {
+            await pushNotifications([{
+              user_id: coverRequestUserId,
+              title: `${volunteer.name} asked if you could cover`,
+              message: `${volunteer.name} can't make "${schedule.service}" on ${schedule.date} (${assignment.role}) and asked if you could cover.`,
+              type: "schedule",
+              link: "/dashboard/schedule",
+            }])
+          }
+        }
       }
     }
   }
 
   // Availability
-  const setMyAvailability = async (entries: { date: string; status: "available" | "unavailable" }[]) => {
+  const setMyAvailability = async (entries: { date: string; status: "available" | "unavailable"; note?: string }[]) => {
     if (entries.length === 0) return
     const { data: { session } } = await supabase.auth.getSession()
     const userId = session?.user?.id
     if (!userId) throw new Error("Not authenticated")
 
     const { error } = await supabase.from("volunteer_availability").upsert(
-      entries.map((e) => ({ user_id: userId, date: e.date, status: e.status, updated_at: new Date().toISOString() })),
+      entries.map((e) => ({
+        user_id: userId,
+        date: e.date,
+        status: e.status,
+        note: e.note || null,
+        updated_at: new Date().toISOString(),
+      })),
       { onConflict: "user_id,date" },
     )
     if (error) throw new Error(error.message)
@@ -1305,7 +1328,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       const untouched = prev.filter((a) => !(a.userId === userId && entries.some((e) => e.date === a.date)))
       const updated: VolunteerAvailability[] = entries.map((e) => {
         const existing = prev.find((a) => a.userId === userId && a.date === e.date)
-        return { id: existing?.id ?? `${userId}-${e.date}`, userId, date: e.date, status: e.status }
+        return { id: existing?.id ?? `${userId}-${e.date}`, userId, date: e.date, status: e.status, note: e.note || undefined }
       })
       return [...untouched, ...updated]
     })

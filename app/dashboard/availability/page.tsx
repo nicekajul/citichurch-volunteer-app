@@ -6,10 +6,12 @@ import { useData } from "@/lib/data-context"
 import { Header } from "@/components/dashboard/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, CalendarDays, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { CheckCircle2, XCircle, CalendarDays, Loader2, ChevronLeft, ChevronRight, CalendarRange, X, StickyNote } from "lucide-react"
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 type Status = "available" | "unavailable" | undefined
+type Entry = { status: Status; note?: string }
 
 function toDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -55,24 +57,89 @@ export default function AvailabilityPage() {
 
   const savedAvailability = user ? getAvailabilityForUser(user.id) : []
   const savedMap = useMemo(() => {
-    const map = new Map<string, Status>()
-    savedAvailability.forEach((a) => map.set(a.date, a.status))
+    const map = new Map<string, Entry>()
+    savedAvailability.forEach((a) => map.set(a.date, { status: a.status, note: a.note }))
     return map
   }, [savedAvailability])
 
   // Local editable selections, seeded from what's saved. Only tracks dates the
   // user has touched this session — everything else falls back to savedMap.
-  const [pending, setPending] = useState<Map<string, Status>>(new Map())
+  const [pending, setPending] = useState<Map<string, Entry>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const getStatus = (date: string): Status => (pending.has(date) ? pending.get(date) : savedMap.get(date))
+  const getEntry = (date: string): Entry => pending.get(date) ?? savedMap.get(date) ?? { status: undefined }
 
-  const toggleDay = (date: string) => {
+  // ── Range selection mode ────────────────────────────────────────────────
+  // Tap a start day, tap an end day, then apply a status (+ optional shared
+  // note) to the whole inclusive range at once — the single-day tap-to-cycle
+  // below stays available for quick one-off changes.
+  const [isRangeMode, setIsRangeMode] = useState(false)
+  const [rangeStart, setRangeStart] = useState<string | null>(null)
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null)
+  const [rangeNote, setRangeNote] = useState("")
+
+  const rangeDates = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return [] as string[]
+    const [a, b] = [rangeStart, rangeEnd].sort()
+    const result: string[] = []
+    const cursor = new Date(a)
+    const end = new Date(b)
+    while (cursor <= end) {
+      result.push(toDateStr(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return result
+  }, [rangeStart, rangeEnd])
+
+  const handleDayClick = (date: string) => {
+    if (isRangeMode) {
+      if (!rangeStart || (rangeStart && rangeEnd)) {
+        // Starting a new range
+        setRangeStart(date)
+        setRangeEnd(null)
+      } else {
+        setRangeEnd(date)
+      }
+      return
+    }
     setSaved(false)
     setPending((prev) => {
       const next = new Map(prev)
-      next.set(date, nextStatus(getStatus(date)))
+      const current = getEntry(date)
+      const status = nextStatus(current.status)
+      next.set(date, { status, note: status === undefined ? undefined : current.note })
+      return next
+    })
+  }
+
+  const applyRange = (status: "available" | "unavailable" | "clear") => {
+    setSaved(false)
+    setPending((prev) => {
+      const next = new Map(prev)
+      rangeDates.forEach((date) => {
+        next.set(date, status === "clear" ? { status: undefined } : { status, note: rangeNote.trim() || undefined })
+      })
+      return next
+    })
+    setRangeStart(null)
+    setRangeEnd(null)
+    setRangeNote("")
+    setIsRangeMode(false)
+  }
+
+  const cancelRange = () => {
+    setRangeStart(null)
+    setRangeEnd(null)
+    setRangeNote("")
+  }
+
+  const updateNote = (date: string, note: string) => {
+    setSaved(false)
+    setPending((prev) => {
+      const next = new Map(prev)
+      const current = getEntry(date)
+      next.set(date, { status: current.status, note: note || undefined })
       return next
     })
   }
@@ -82,14 +149,14 @@ export default function AvailabilityPage() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      const toSet: { date: string; status: "available" | "unavailable" }[] = []
+      const toSet: { date: string; status: "available" | "unavailable"; note?: string }[] = []
       const toClear: string[] = []
 
-      pending.forEach((status, date) => {
-        if (status === undefined) {
+      pending.forEach((entry, date) => {
+        if (entry.status === undefined) {
           if (savedMap.has(date)) toClear.push(date)
         } else {
-          toSet.push({ date, status })
+          toSet.push({ date, status: entry.status, note: entry.note })
         }
       })
 
@@ -105,8 +172,13 @@ export default function AvailabilityPage() {
     }
   }
 
-  const availableCount = days.filter((d) => getStatus(toDateStr(d)) === "available").length
-  const unavailableCount = days.filter((d) => getStatus(toDateStr(d)) === "unavailable").length
+  const availableCount = days.filter((d) => getEntry(toDateStr(d)).status === "available").length
+  const unavailableCount = days.filter((d) => getEntry(toDateStr(d)).status === "unavailable").length
+
+  // Days in the current month view that have a status set, for the notes list below.
+  const markedDays = days
+    .map((d) => ({ date: toDateStr(d), ...getEntry(toDateStr(d)) }))
+    .filter((e) => e.status !== undefined)
 
   return (
     <div className="min-h-screen">
@@ -122,11 +194,25 @@ export default function AvailabilityPage() {
               <div>
                 <CardTitle>Availability Calendar</CardTitle>
                 <CardDescription>
-                  Tap a day to cycle: not set → available → unavailable. This is a suggestion only —
-                  leaders and admins can still assign you even if a day isn&apos;t marked.
+                  {isRangeMode
+                    ? rangeStart && !rangeEnd
+                      ? "Now tap the last day of the range."
+                      : "Tap the first day of the range you want to set."
+                    : "Tap a day to cycle: not set → available → unavailable. This is a suggestion only — leaders and admins can still assign you even if a day isn't marked."}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant={isRangeMode ? "default" : "outline"}
+                  onClick={() => {
+                    setIsRangeMode((v) => !v)
+                    cancelRange()
+                  }}
+                  disabled={isSaving}
+                >
+                  <CalendarRange className="h-4 w-4 mr-2" />
+                  {isRangeMode ? "Cancel Range" : "Select Range"}
+                </Button>
                 <Button variant="outline" onClick={() => setPending(new Map())} disabled={!isDirty || isSaving}>
                   Discard
                 </Button>
@@ -171,6 +257,33 @@ export default function AvailabilityPage() {
                 </span>
               )}
             </div>
+
+            {/* Range selection action bar */}
+            {isRangeMode && rangeStart && rangeEnd && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <span className="text-sm font-medium">{rangeDates.length} day{rangeDates.length === 1 ? "" : "s"} selected</span>
+                <Input
+                  placeholder="Reason (optional) — e.g. Out of town"
+                  value={rangeNote}
+                  onChange={(e) => setRangeNote(e.target.value)}
+                  className="h-8 max-w-xs text-sm"
+                />
+                <div className="flex items-center gap-2 ml-auto">
+                  <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-500/10" onClick={() => applyRange("available")}>
+                    Mark Available
+                  </Button>
+                  <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-500/10" onClick={() => applyRange("unavailable")}>
+                    Mark Unavailable
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => applyRange("clear")}>
+                    Clear
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancelRange} aria-label="Cancel selection">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
@@ -191,15 +304,21 @@ export default function AvailabilityPage() {
               ))}
               {days.map((d) => {
                 const dateStr = toDateStr(d)
-                const status = getStatus(dateStr)
+                const entry = getEntry(dateStr)
+                const status = entry.status
                 const isToday = dateStr === toDateStr(new Date())
                 const isSunday = d.getDay() === 0
+                const inRangeSelection =
+                  isRangeMode &&
+                  ((rangeStart && !rangeEnd && dateStr === rangeStart) || rangeDates.includes(dateStr))
                 return (
                   <button
                     key={dateStr}
-                    onClick={() => toggleDay(dateStr)}
+                    onClick={() => handleDayClick(dateStr)}
                     className={`relative rounded-lg border p-2.5 text-left transition-colors ${
-                      status === "available"
+                      inRangeSelection
+                        ? "border-primary bg-primary/15 hover:bg-primary/20"
+                        : status === "available"
                         ? "border-green-300 bg-green-500/10 hover:bg-green-500/15"
                         : status === "unavailable"
                         ? "border-red-300 bg-red-500/10 hover:bg-red-500/15"
@@ -227,9 +346,10 @@ export default function AvailabilityPage() {
                     >
                       {d.getDate()}
                     </div>
-                    <div className="mt-1 h-3.5">
+                    <div className="mt-1 h-3.5 flex items-center gap-1">
                       {status === "available" && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
                       {status === "unavailable" && <XCircle className="h-3.5 w-3.5 text-red-500" />}
+                      {entry.note && <StickyNote className="h-3 w-3 text-muted-foreground" />}
                     </div>
                   </button>
                 )
@@ -243,6 +363,46 @@ export default function AvailabilityPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Notes for marked days in the current month */}
+        {markedDays.length > 0 && (
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="text-base">Notes</CardTitle>
+              <CardDescription>
+                Add context for your team leader on any marked day — e.g. "Out of town" or "Exam week."
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {markedDays.map(({ date, status, note }) => {
+                const [, month, day] = date.split("-")
+                const label = new Date(Number(date.slice(0, 4)), Number(month) - 1, Number(day)).toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })
+                return (
+                  <div key={date} className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 w-32 shrink-0 text-sm">
+                      {status === "available" ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                      )}
+                      <span className="truncate">{label}</span>
+                    </div>
+                    <Input
+                      placeholder="Add a note (optional)"
+                      value={note ?? ""}
+                      onChange={(e) => updateNote(date, e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

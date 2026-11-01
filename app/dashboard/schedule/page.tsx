@@ -21,8 +21,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown, HelpCircle, CalendarCheck, Copy, Check } from "lucide-react"
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Users, X, Pencil, CheckCircle2, XCircle, History, MapPin, ThumbsUp, ThumbsDown, HelpCircle, CalendarCheck, Copy, Check, CalendarPlus } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTHS = [
@@ -41,13 +42,49 @@ function formatDate(dateStr: string) {
   return new Date(year, month - 1, day).toLocaleDateString()
 }
 
+// Builds a standard .ics file for a single service so a volunteer can drop
+// it into their phone's own calendar app and get its native reminders --
+// floating (timezone-less) local time, matching how the rest of the app
+// already treats schedule times as plain wall-clock values. Defaults to a
+// 1-hour duration since the app doesn't track an end time.
+function buildICS(schedule: ServiceSchedule): string {
+  const [year, month, day] = schedule.date.split("-").map(Number)
+  const [hour, minute] = (schedule.time || "09:00").split(":").map(Number)
+  const start = new Date(year, month - 1, day, hour, minute)
+  const end = new Date(start.getTime() + 60 * 60 * 1000)
+
+  const fmtLocal = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}00`
+  const fmtUtc = (d: Date) =>
+    `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}T${String(d.getUTCHours()).padStart(2, "0")}${String(d.getUTCMinutes()).padStart(2, "0")}${String(d.getUTCSeconds()).padStart(2, "0")}Z`
+  const escapeText = (s: string) => s.replace(/[\\,;]/g, (m) => `\\${m}`).replace(/\n/g, "\\n")
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Citichurch//Volunteer Portal//EN",
+    "BEGIN:VEVENT",
+    `UID:${schedule.id}@citichurch-volunteer-app`,
+    `DTSTAMP:${fmtUtc(new Date())}`,
+    `DTSTART:${fmtLocal(start)}`,
+    `DTEND:${fmtLocal(end)}`,
+    `SUMMARY:${escapeText(schedule.service)}`,
+    schedule.location ? `LOCATION:${escapeText(schedule.location)}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean)
+
+  return lines.join("\r\n")
+}
+
 // Small dot showing a volunteer's self-reported availability for a specific
 // schedule date. Advisory only — absence of a dot just means they haven't set one.
-function AvailabilityMark({ status }: { status?: "available" | "unavailable" }) {
+function AvailabilityMark({ status, note }: { status?: "available" | "unavailable"; note?: string }) {
   if (!status) return null
+  const base = status === "available" ? "Marked available for this date" : "Marked unavailable for this date"
   return (
     <span
-      title={status === "available" ? "Marked available for this date" : "Marked unavailable for this date"}
+      title={note ? `${base} — ${note}` : base}
       className={`inline-block h-2 w-2 rounded-full shrink-0 ${
         status === "available" ? "bg-green-500" : "bg-red-500"
       }`}
@@ -77,6 +114,11 @@ export default function SchedulePage() {
   const [selectedTeam, setSelectedTeam] = useState("")
   const [selectedRole, setSelectedRole] = useState("")
 
+  // Weekly recurrence for the create dialog -- same service/time/location/
+  // roster, repeated every 7 days from the chosen date.
+  const [repeatWeekly, setRepeatWeekly] = useState(false)
+  const [repeatWeeks, setRepeatWeeks] = useState(4)
+
   // Detail / edit dialog state
   const [detailSchedule, setDetailSchedule] = useState<ServiceSchedule | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
@@ -90,10 +132,16 @@ export default function SchedulePage() {
   // Accept / decline state
   const [isDeclining, setIsDeclining] = useState(false)
   const [declineReason, setDeclineReason] = useState("")
+  const [coverRequestId, setCoverRequestId] = useState("")
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
 
   // Copy-to-clipboard state (share roster details to Telegram/group chats)
   const [copied, setCopied] = useState(false)
+
+  // Confirmation before assigning someone who's marked themselves unavailable
+  // for the schedule's date -- availability is advisory, so this doesn't
+  // block the assignment, just makes sure it's not accidental.
+  const [unavailableConfirm, setUnavailableConfirm] = useState<{ mode: "create" | "edit"; volunteerId: string; note?: string } | null>(null)
 
   // Availability overview state — read-only, lets admins/leaders see who's
   // free for a date without needing to build a schedule around it first.
@@ -144,11 +192,9 @@ export default function SchedulePage() {
 
   // ── Create helpers ──────────────────────────────────────────────────────────
 
-  const handleAddAssignment = () => {
-    if (!selectedVolunteer || !selectedRole) return
+  const addAssignmentToCreate = () => {
     const teamId = isTeamScopedManager && user.team_id ? user.team_id : selectedTeam
     if (!teamId) return
-    if (newSchedule.assignments.some((a) => a.userId === selectedVolunteer)) return
     setNewSchedule({
       ...newSchedule,
       assignments: [...newSchedule.assignments, { id: "", userId: selectedVolunteer, teamId, role: selectedRole, status: "assigned" }],
@@ -158,18 +204,43 @@ export default function SchedulePage() {
     setSelectedRole("")
   }
 
+  const handleAddAssignment = () => {
+    if (!selectedVolunteer || !selectedRole) return
+    const teamId = isTeamScopedManager && user.team_id ? user.team_id : selectedTeam
+    if (!teamId) return
+    if (newSchedule.assignments.some((a) => a.userId === selectedVolunteer)) return
+
+    const availability = getAvailabilityForDate(selectedVolunteer, newSchedule.date)
+    if (availability?.status === "unavailable") {
+      setUnavailableConfirm({ mode: "create", volunteerId: selectedVolunteer, note: availability.note })
+      return
+    }
+    addAssignmentToCreate()
+  }
+
   const handleCreate = async () => {
     if (!newSchedule.date || !newSchedule.service) return
     setCreateError(null)
     try {
-      await addServiceSchedule({
-        date: newSchedule.date,
-        time: newSchedule.time || undefined,
-        service: newSchedule.service,
-        location: newSchedule.location || undefined,
-        assignments: newSchedule.assignments,
-      })
+      const occurrenceCount = repeatWeekly ? Math.max(1, repeatWeeks) : 1
+      const baseDate = new Date(newSchedule.date)
+      // Sequential, not Promise.all -- each create triggers its own full
+      // schedules refetch, and firing them concurrently would race.
+      for (let i = 0; i < occurrenceCount; i++) {
+        const occurrenceDate = new Date(baseDate)
+        occurrenceDate.setDate(occurrenceDate.getDate() + i * 7)
+        const dateStr = `${occurrenceDate.getFullYear()}-${String(occurrenceDate.getMonth() + 1).padStart(2, "0")}-${String(occurrenceDate.getDate()).padStart(2, "0")}`
+        await addServiceSchedule({
+          date: dateStr,
+          time: newSchedule.time || undefined,
+          service: newSchedule.service,
+          location: newSchedule.location || undefined,
+          assignments: newSchedule.assignments,
+        })
+      }
       setNewSchedule({ date: "", time: "", service: "", location: "", assignments: [] })
+      setRepeatWeekly(false)
+      setRepeatWeeks(4)
       setIsCreateOpen(false)
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "Failed to create schedule")
@@ -182,6 +253,8 @@ export default function SchedulePage() {
     setSelectedTeam(isTeamScopedManager && user.team_id ? user.team_id : "")
     setSelectedVolunteer("")
     setSelectedRole("")
+    setRepeatWeekly(false)
+    setRepeatWeeks(4)
     setIsCreateOpen(true)
   }
 
@@ -197,8 +270,18 @@ export default function SchedulePage() {
     setAddRole("")
     setIsDeclining(false)
     setDeclineReason("")
+    setCoverRequestId("")
     setCopied(false)
     setIsDetailOpen(true)
+  }
+
+  const addAssignmentToEdit = () => {
+    const teamId = isTeamScopedManager && user.team_id ? user.team_id : addTeam
+    if (!teamId) return
+    setEditAssignments((prev) => [...prev, { id: "", userId: addVolunteer, teamId, role: addRole, status: "assigned" }])
+    // Keep team so more from same team can be added quickly
+    setAddVolunteer("")
+    setAddRole("")
   }
 
   const handleAddEditAssignment = () => {
@@ -206,10 +289,19 @@ export default function SchedulePage() {
     const teamId = isTeamScopedManager && user.team_id ? user.team_id : addTeam
     if (!teamId) return
     if (editAssignments.some((a) => a.userId === addVolunteer)) return
-    setEditAssignments((prev) => [...prev, { id: "", userId: addVolunteer, teamId, role: addRole, status: "assigned" }])
-    // Keep team so more from same team can be added quickly
-    setAddVolunteer("")
-    setAddRole("")
+
+    const availability = getAvailabilityForDate(addVolunteer, editFields.date)
+    if (availability?.status === "unavailable") {
+      setUnavailableConfirm({ mode: "edit", volunteerId: addVolunteer, note: availability.note })
+      return
+    }
+    addAssignmentToEdit()
+  }
+
+  const confirmUnavailableAssignment = () => {
+    if (unavailableConfirm?.mode === "create") addAssignmentToCreate()
+    if (unavailableConfirm?.mode === "edit") addAssignmentToEdit()
+    setUnavailableConfirm(null)
   }
 
   const handleSaveEdit = async () => {
@@ -229,7 +321,7 @@ export default function SchedulePage() {
     if (!detailSchedule || !user) return
     setIsSubmittingResponse(true)
     try {
-      await respondToSchedule(detailSchedule.id, response, reason)
+      await respondToSchedule(detailSchedule.id, response, reason, coverRequestId || undefined)
       // Optimistically update the displayed roster so the dialog reflects the change
       setEditAssignments((prev) =>
         prev.map((a) =>
@@ -240,6 +332,7 @@ export default function SchedulePage() {
       )
       setIsDeclining(false)
       setDeclineReason("")
+      setCoverRequestId("")
     } finally {
       setIsSubmittingResponse(false)
     }
@@ -291,6 +384,20 @@ export default function SchedulePage() {
     } catch (e) {
       console.error("Failed to copy schedule details:", e)
     }
+  }
+
+  const handleDownloadICS = () => {
+    if (!detailSchedule) return
+    const ics = buildICS(detailSchedule)
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${detailSchedule.service.replace(/[^a-z0-9]+/gi, "-")}.ics`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   const getTeamName = (teamId: string) => teams.find((t) => t.id === teamId)?.name || teamId
@@ -484,6 +591,31 @@ export default function SchedulePage() {
                     />
                   </div>
 
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label htmlFor="repeat-weekly">Repeat Weekly</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Create the same service every week, same time/location/roster</p>
+                      </div>
+                      <Switch id="repeat-weekly" checked={repeatWeekly} onCheckedChange={setRepeatWeekly} />
+                    </div>
+                    {repeatWeekly && (
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="repeat-weeks" className="text-sm shrink-0">For</Label>
+                        <Input
+                          id="repeat-weeks"
+                          type="number"
+                          min={2}
+                          max={52}
+                          value={repeatWeeks}
+                          onChange={(e) => setRepeatWeeks(Math.min(52, Math.max(2, Number.parseInt(e.target.value) || 2)))}
+                          className="w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">weeks (including {newSchedule.date ? "the selected date" : "this one"})</span>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Volunteer Assignments — only shown once a team is selected */}
                   {(selectedTeam || isTeamScopedManager) && (
                     <div className="space-y-3 pt-2 border-t">
@@ -502,7 +634,7 @@ export default function SchedulePage() {
                               <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                                 <span className="font-medium">{getUserName(a.userId)}</span>
                                 <VolunteerBadges userId={a.userId} size="sm" />
-                                <AvailabilityMark status={getAvailabilityForDate(a.userId, newSchedule.date)?.status} />
+                                <AvailabilityMark status={getAvailabilityForDate(a.userId, newSchedule.date)?.status} note={getAvailabilityForDate(a.userId, newSchedule.date)?.note} />
                               </div>
                               <Badge variant="secondary" className="text-xs shrink-0">{a.role}</Badge>
                               <Button
@@ -543,7 +675,7 @@ export default function SchedulePage() {
                                         <div className="flex items-center gap-2">
                                           <span>{v.name.split(" ")[0]}</span>
                                           <VolunteerBadges userId={v.id} variant="dots" tooltip={false} />
-                                          <AvailabilityMark status={getAvailabilityForDate(v.id, newSchedule.date)?.status} />
+                                          <AvailabilityMark status={getAvailabilityForDate(v.id, newSchedule.date)?.status} note={getAvailabilityForDate(v.id, newSchedule.date)?.note} />
                                         </div>
                                       </SelectItem>
                                     ))
@@ -602,6 +734,33 @@ export default function SchedulePage() {
           )}
         </div>
 
+        {/* Unavailable-volunteer confirmation */}
+        <Dialog open={!!unavailableConfirm} onOpenChange={(open) => { if (!open) setUnavailableConfirm(null) }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Assign anyway?</DialogTitle>
+              <DialogDescription>
+                {unavailableConfirm && (
+                  <>
+                    <span className="font-medium text-foreground">{getUserName(unavailableConfirm.volunteerId)}</span>{" "}
+                    marked themselves unavailable for this date
+                    {unavailableConfirm.note ? <> — &quot;{unavailableConfirm.note}&quot;</> : "."}
+                    {" "}You can still assign them if this was planned.
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUnavailableConfirm(null)} className="dark:hover:bg-muted dark:hover:text-foreground">
+                Cancel
+              </Button>
+              <Button onClick={confirmUnavailableAssignment}>
+                Assign Anyway
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Detail / Edit Dialog */}
         <Dialog open={isDetailOpen} onOpenChange={(open) => { setIsDetailOpen(open); if (!open) setIsEditing(false) }}>
           <DialogContent className="max-w-lg">
@@ -625,6 +784,9 @@ export default function SchedulePage() {
                     <Button variant="outline" size="sm" onClick={handleCopySchedule}>
                       {copied ? <Check className="h-3 w-3 mr-1 text-green-600" /> : <Copy className="h-3 w-3 mr-1" />}
                       {copied ? "Copied!" : "Copy"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownloadICS}>
+                      <CalendarPlus className="h-3 w-3 mr-1" /> Add to Calendar
                     </Button>
                     {canCreate && (
                       <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
@@ -762,12 +924,36 @@ export default function SchedulePage() {
                           rows={3}
                           className="resize-none text-sm"
                         />
+                        {myAssignment && (() => {
+                          const teammates = users.filter(
+                            (u) =>
+                              u.id !== user?.id &&
+                              u.teamId === myAssignment.teamId &&
+                              (u.role === "volunteer" || u.role === "leader")
+                          )
+                          if (teammates.length === 0) return null
+                          return (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-muted-foreground">Ask a teammate to cover (optional)</Label>
+                              <Select value={coverRequestId} onValueChange={setCoverRequestId}>
+                                <SelectTrigger className="h-8 text-sm">
+                                  <SelectValue placeholder="No one specific" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teammates.map((t) => (
+                                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )
+                        })()}
                         <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="outline"
                             className="flex-1 dark:hover:bg-muted"
-                            onClick={() => { setIsDeclining(false); setDeclineReason("") }}
+                            onClick={() => { setIsDeclining(false); setDeclineReason(""); setCoverRequestId("") }}
                           >
                             Back
                           </Button>
@@ -827,7 +1013,7 @@ export default function SchedulePage() {
                                 {isMe && <span className="ml-1 text-xs font-normal">(You)</span>}
                               </span>
                               <VolunteerBadges userId={a.userId} variant="dots" />
-                              <AvailabilityMark status={getAvailabilityForDate(a.userId, editFields.date)?.status} />
+                              <AvailabilityMark status={getAvailabilityForDate(a.userId, editFields.date)?.status} note={getAvailabilityForDate(a.userId, editFields.date)?.note} />
                               <span className="text-muted-foreground text-xs">— {getTeamName(a.teamId)}</span>
                               <Badge variant="outline" className="text-xs">{a.role}</Badge>
                               {!isEditing && (
@@ -877,7 +1063,7 @@ export default function SchedulePage() {
                                       {a.userId === user?.id && <span className="ml-1 text-xs font-normal">(You)</span>}
                                     </span>
                                     <VolunteerBadges userId={a.userId} variant="dots" />
-                                    <AvailabilityMark status={getAvailabilityForDate(a.userId, editFields.date)?.status} />
+                                    <AvailabilityMark status={getAvailabilityForDate(a.userId, editFields.date)?.status} note={getAvailabilityForDate(a.userId, editFields.date)?.note} />
                                     <span className="text-muted-foreground text-xs">— {getTeamName(a.teamId)}</span>
                                     <Badge variant="outline" className="text-xs">{a.role}</Badge>
                                     {!isEditing && (
@@ -958,7 +1144,7 @@ export default function SchedulePage() {
                                         <div className="flex items-center gap-2">
                                           <span>{v.name.split(" ")[0]}</span>
                                           <VolunteerBadges userId={v.id} variant="dots" tooltip={false} />
-                                          <AvailabilityMark status={getAvailabilityForDate(v.id, editFields.date)?.status} />
+                                          <AvailabilityMark status={getAvailabilityForDate(v.id, editFields.date)?.status} note={getAvailabilityForDate(v.id, editFields.date)?.note} />
                                         </div>
                                       </SelectItem>
                                     ))
