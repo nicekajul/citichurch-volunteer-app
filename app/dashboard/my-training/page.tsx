@@ -26,7 +26,9 @@ export default function MyTrainingPage() {
 
   // user comes from auth context which uses snake_case DB columns
   const myTeam = teams.find((t) => t.id === user.team_id)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
+  // Draft/archived modules are staged or retired by the admin/leader and
+  // shouldn't appear to volunteers at all.
+  const relevantVideos = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === user.team_id))
   const myProgress = trainingProgress.filter((p) => p.userId === user.id)
   // Only count completions against modules still relevant to the volunteer's
   // current team -- a team reassignment can leave "completed" rows for

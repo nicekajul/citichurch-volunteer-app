@@ -323,9 +323,9 @@ export default function CertificatesPage() {
     .filter((cert) => !cert.teamId || cert.teamId === user.team_id)
     .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
 
-  const totalModules    = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id).length
+  const totalModules    = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === user.team_id)).length
   const completedCount  = [...completedIds].filter((id) =>
-    trainingVideos.find((v) => v.id === id && (!v.teamId || v.teamId === user.team_id)),
+    trainingVideos.find((v) => v.id === id && v.status === "published" && (!v.teamId || v.teamId === user.team_id)),
   ).length
   const overallPct = totalModules > 0 ? Math.round((completedCount / totalModules) * 100) : 0
 
@@ -370,7 +370,7 @@ export default function CertificatesPage() {
           <div>
             {tiers.map((cert, idx) => {
               const tierModules = trainingVideos
-                .filter((v) => v.certificateId === cert.id && (!v.teamId || v.teamId === user.team_id))
+                .filter((v) => v.certificateId === cert.id && v.status === "published" && (!v.teamId || v.teamId === user.team_id))
                 .sort((a, b) => a.order - b.order)
               const earned = earnedIds.has(cert.id)
               const locked = isCertificateLocked(cert.id, user.id)

@@ -259,7 +259,9 @@ export function VolunteerBadges({ userId, size = "sm", variant = "badge", toolti
     )
 
     return tiers.map((cert, idx) => {
-      const tierModules = trainingVideos.filter((v) => v.certificateId === cert.id)
+      // Draft/archived modules aren't visible to the volunteer, so they
+      // shouldn't count toward the displayed progress total.
+      const tierModules = trainingVideos.filter((v) => v.certificateId === cert.id && v.status === "published")
       const completed   = tierModules.filter((v) => completedVideoIds.has(v.id)).length
       const earned      = earnedIds.has(cert.id)
       const prevEarned  = idx === 0 || earnedIds.has(tiers[idx - 1].id)
@@ -311,7 +313,9 @@ export function VolunteerBadgesPanel({ userId }: { userId: string }) {
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {tiers.map((cert, idx) => {
         const Icon        = TIER_ICONS[cert.orderIndex ?? 1] ?? BookOpen
-        const tierModules = trainingVideos.filter((v) => v.certificateId === cert.id)
+        // Draft/archived modules aren't visible to the volunteer, so they
+        // shouldn't count toward the displayed progress total.
+        const tierModules = trainingVideos.filter((v) => v.certificateId === cert.id && v.status === "published")
         const completed   = tierModules.filter((v) => completedVideoIds.has(v.id)).length
         const total       = tierModules.length
         const earned      = earnedIds.has(cert.id)

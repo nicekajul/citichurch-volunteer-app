@@ -152,7 +152,7 @@ export default function TrainingVideoPage() {
     }
   }, [isEmbedVideo, pollYouTubeProgress])
 
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user?.team_id)
+  const relevantVideos = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === user?.team_id))
   const currentIndex = relevantVideos.findIndex((v) => v.id === videoId)
   const prevVideo = currentIndex > 0 ? relevantVideos[currentIndex - 1] : null
   const nextVideo = currentIndex < relevantVideos.length - 1 ? relevantVideos[currentIndex + 1] : null
@@ -284,7 +284,10 @@ export default function TrainingVideoPage() {
     return null
   }
 
-  if (!video) {
+  // A draft/archived module isn't meant to be visible to volunteers --
+  // treat a direct link to one the same as a nonexistent module, so staged
+  // or retired content can't be watched/completed via a stale/guessed URL.
+  if (!video || video.status !== "published") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

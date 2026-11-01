@@ -66,7 +66,9 @@ export default function VolunteerProfilePage({ params }: { params: Promise<{ id:
   }
 
   const volunteerProgress = trainingProgress.filter((p) => p.userId === volunteer.id)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === volunteer.teamId)
+  // Draft/archived modules aren't visible to the volunteer themselves, so
+  // they shouldn't count toward their progress total here either.
+  const relevantVideos = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === volunteer.teamId))
   const completedVideos = volunteerProgress.filter((p) => p.completed)
   const approvedVideos = completedVideos.filter((p) => p.approvedBy)
 

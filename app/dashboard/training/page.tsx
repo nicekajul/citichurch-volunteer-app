@@ -39,9 +39,30 @@ import {
   Link as LinkIcon,
   AlertCircle,
   Award,
+  ListOrdered,
+  GripVertical,
+  Archive,
+  ArchiveRestore,
+  Eye,
+  EyeOff,
 } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import type { TrainingDocument } from "@/lib/data"
+import type { TrainingDocument, TrainingVideo, Team } from "@/lib/data"
 import type { Certificate } from "@/lib/data"
 import { cn, getVideoThumbnail } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -66,6 +87,8 @@ export default function TrainingPage() {
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterTeam, setFilterTeam] = useState<string>("all")
+  const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [isReorderMode, setIsReorderMode] = useState(false)
   const [isAddVideoOpen, setIsAddVideoOpen] = useState(false)
   const [isQuizModalOpen, setIsQuizModalOpen] = useState(false)
   const [selectedVideoForQuiz, setSelectedVideoForQuiz] = useState<string | null>(null)
@@ -79,6 +102,7 @@ export default function TrainingPage() {
     duration: number
     teamId: string
     order: number
+    status: "draft" | "published" | "archived"
     quizEnabled: boolean
     quizRequired: boolean
     passingScore: number
@@ -101,6 +125,7 @@ export default function TrainingPage() {
     duration: 120,
     teamId: "general",
     order: 1,
+    status: "draft" as "draft" | "published" | "archived",
     quizEnabled: false,
     quizRequired: false,
     passingScore: 70,
@@ -146,14 +171,18 @@ export default function TrainingPage() {
   const filteredVideos = trainingVideos.filter((v) => {
     const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesTeam = filterTeam === "all" || (filterTeam === "general" && !v.teamId) || v.teamId === filterTeam
+    // Archived modules are retired -- keep them out of the default view so
+    // they don't clutter day-to-day management; still reachable via the
+    // status filter.
+    const matchesStatus = filterStatus === "all" ? v.status !== "archived" : v.status === filterStatus
 
     if (isTeamScopedManager) {
       const isRelevant = !v.teamId || v.teamId === user.team_id
-      return matchesSearch && isRelevant && (filterTeam === "all" || matchesTeam)
+      return matchesSearch && isRelevant && (filterTeam === "all" || matchesTeam) && matchesStatus
     }
 
-    return matchesSearch && matchesTeam
-  })
+    return matchesSearch && matchesTeam && matchesStatus
+  }).sort((a, b) => a.order - b.order)
 
   const availableTeams = user?.role === "admin" ? teams : teams.filter((t) => t.id === user?.team_id)
 
@@ -248,13 +277,19 @@ export default function TrainingPage() {
     const teamId =
       isTeamScopedManager ? user.team_id : newVideo.teamId === "general" ? undefined : newVideo.teamId
 
+    // New modules go to the end of the existing order, not a fixed position —
+    // order_index now actually persists, so "1" for every new module would
+    // keep bumping it to the front of the list.
+    const nextOrder = trainingVideos.length > 0 ? Math.max(...trainingVideos.map((v) => v.order)) + 1 : 1
+
     addTrainingVideo({
       title: newVideo.title,
       description: newVideo.description,
       videoUrl,
       duration,
       teamId: teamId || undefined,
-      order: newVideo.order,
+      order: nextOrder,
+      status: newVideo.status,
       quizEnabled: newVideo.quizEnabled,
       quizRequired: newVideo.quizRequired,
       passingScore: newVideo.passingScore,
@@ -263,10 +298,42 @@ export default function TrainingPage() {
       certificateId: newVideo.certificateId || undefined,
       prerequisites: newVideo.prerequisites,
     })
-    setNewVideo({ title: "", description: "", hasVideo: true, videoUrl: "", duration: 120, teamId: "general", order: 1, quizEnabled: false, quizRequired: false, passingScore: 70, summary: "", documents: [], certificateId: "", prerequisites: [] })
+    setNewVideo({ title: "", description: "", hasVideo: true, videoUrl: "", duration: 120, teamId: "general", order: 1, status: "draft", quizEnabled: false, quizRequired: false, passingScore: 70, summary: "", documents: [], certificateId: "", prerequisites: [] })
     setNewVideoSource("url")
     setNewUploadFile(null)
     setIsAddVideoOpen(false)
+  }
+
+  // Quick status change from the card's dropdown menu, without opening the
+  // full edit dialog -- publish a draft, send something back to draft, or
+  // archive/restore a module.
+  const handleSetStatus = (videoId: string, status: "draft" | "published" | "archived") => {
+    updateTrainingVideo(videoId, { status })
+  }
+
+  const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  // Reordering only operates on the currently filtered (and already
+  // order-sorted) list, so dragging within "Broadcast" doesn't touch any
+  // other team's numbering. Persists the new order_index for every item in
+  // the list, not just the two that swapped, since the simplest encoding is
+  // "position in this list" and partial renumbering risks collisions.
+  const handleReorderDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = filteredVideos.findIndex((v) => v.id === active.id)
+    const newIndex = filteredVideos.findIndex((v) => v.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const reordered = arrayMove(filteredVideos, oldIndex, newIndex)
+    // Sequential, not parallel -- each update triggers its own full training
+    // refetch, and firing them concurrently would race.
+    for (const [index, video] of reordered.entries()) {
+      if (video.order !== index) {
+        await updateTrainingVideo(video.id, { order: index })
+      }
+    }
   }
 
   const handleEditVideo = (videoId: string) => {
@@ -280,6 +347,7 @@ export default function TrainingPage() {
         duration: video.duration,
         teamId: video.teamId || "general",
         order: video.order,
+        status: video.status,
         quizEnabled: video.quizEnabled,
         quizRequired: video.quizRequired,
         passingScore: video.passingScore,
@@ -325,6 +393,7 @@ export default function TrainingPage() {
       duration,
       teamId: editVideoData.teamId === "general" ? undefined : editVideoData.teamId,
       order: editVideoData.order,
+      status: editVideoData.status,
       quizEnabled: editVideoData.quizEnabled,
       quizRequired: editVideoData.quizRequired,
       passingScore: editVideoData.passingScore,
@@ -455,9 +524,27 @@ export default function TrainingPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Active (not archived)</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex gap-2">
+          <Button
+            variant={isReorderMode ? "default" : "outline"}
+            onClick={() => setIsReorderMode((v) => !v)}
+          >
+            <ListOrdered className="w-4 h-4 mr-2" />
+            {isReorderMode ? "Done Reordering" : "Reorder"}
+          </Button>
           <Dialog open={isCertModalOpen} onOpenChange={setIsCertModalOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -807,6 +894,20 @@ export default function TrainingPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label>Status</Label>
+                  <p className="text-xs text-muted-foreground">Draft stays hidden from volunteers until you publish it</p>
+                  <Select value={newVideo.status} onValueChange={(v) => setNewVideo({ ...newVideo, status: v as "draft" | "published" })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft (hidden from volunteers)</SelectItem>
+                      <SelectItem value="published">Published (visible now)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Certificate</Label>
                   <Select value={newVideo.certificateId} onValueChange={(v) => setNewVideo({ ...newVideo, certificateId: v === "none" ? "" : v })}>
                     <SelectTrigger>
@@ -923,7 +1024,15 @@ export default function TrainingPage() {
           </div>
         </div>
 
-        {/* Videos Grid */}
+        {/* Videos Grid / Reorder List */}
+        {isReorderMode ? (
+          <ReorderList
+            videos={filteredVideos}
+            teams={teams}
+            onDragEnd={handleReorderDragEnd}
+            sensors={dragSensors}
+          />
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredVideos.map((video) => {
             const team = teams.find((t) => t.id === video.teamId)
@@ -932,7 +1041,13 @@ export default function TrainingPage() {
             const hasDocs = video.documents && video.documents.length > 0
 
             return (
-              <Card key={video.id} className="border-border/50 overflow-hidden group">
+              <Card
+                key={video.id}
+                className={cn(
+                  "border-border/50 overflow-hidden group",
+                  video.status === "archived" && "opacity-60"
+                )}
+              >
                 <div className="relative aspect-video bg-muted">
                   {hasVideo ? (
                     <>
@@ -1005,6 +1120,29 @@ export default function TrainingPage() {
                             <Edit2 className="w-4 h-4 mr-2" />
                             Edit Training
                           </DropdownMenuItem>
+                          {video.status === "draft" && (
+                            <DropdownMenuItem onClick={() => handleSetStatus(video.id, "published")}>
+                              <Eye className="w-4 h-4 mr-2" />
+                              Publish
+                            </DropdownMenuItem>
+                          )}
+                          {video.status === "published" && (
+                            <DropdownMenuItem onClick={() => handleSetStatus(video.id, "draft")}>
+                              <EyeOff className="w-4 h-4 mr-2" />
+                              Move to Draft
+                            </DropdownMenuItem>
+                          )}
+                          {video.status !== "archived" ? (
+                            <DropdownMenuItem onClick={() => handleSetStatus(video.id, "archived")}>
+                              <Archive className="w-4 h-4 mr-2" />
+                              Archive
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => handleSetStatus(video.id, "published")}>
+                              <ArchiveRestore className="w-4 h-4 mr-2" />
+                              Restore
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem className="text-destructive" onClick={() => deleteTrainingVideo(video.id)}>
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
@@ -1015,6 +1153,18 @@ export default function TrainingPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
+                    {video.status === "draft" && (
+                      <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600">
+                        <EyeOff className="w-3 h-3 mr-1" />
+                        Draft
+                      </Badge>
+                    )}
+                    {video.status === "archived" && (
+                      <Badge variant="outline" className="text-xs border-muted-foreground/30 text-muted-foreground">
+                        <Archive className="w-3 h-3 mr-1" />
+                        Archived
+                      </Badge>
+                    )}
                     {team ? (
                       <Badge variant="secondary" className="text-xs">
                         {team.name}
@@ -1055,6 +1205,7 @@ export default function TrainingPage() {
             )
           })}
         </div>
+        )}
 
         {filteredVideos.length === 0 && (
           <Card className="border-border/50">
@@ -1219,6 +1370,23 @@ export default function TrainingPage() {
                     onChange={(e) => setEditVideoData({ ...editVideoData, summary: e.target.value })}
                     rows={3}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={editVideoData.status}
+                    onValueChange={(v) => setEditVideoData({ ...editVideoData, status: v as "draft" | "published" | "archived" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft (hidden from volunteers)</SelectItem>
+                      <SelectItem value="published">Published (visible now)</SelectItem>
+                      <SelectItem value="archived">Archived (retired)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -1395,6 +1563,91 @@ export default function TrainingPage() {
           </DialogContent>
         </Dialog>
       </div>
+    </div>
+  )
+}
+
+// ── Reorder mode ───────────────────────────────────────────────────────────
+// A flat, single-column drag list scoped to whatever team/status filters are
+// currently active -- reordering only ever touches modules the admin/leader
+// can actually see at once, so dragging within one team's filtered view
+// can't silently renumber another team's modules.
+
+function ReorderList({
+  videos,
+  teams,
+  onDragEnd,
+  sensors,
+}: {
+  videos: TrainingVideo[]
+  teams: Team[]
+  onDragEnd: (event: DragEndEvent) => void
+  sensors: ReturnType<typeof useSensors>
+}) {
+  if (videos.length === 0) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="py-10 text-center text-muted-foreground text-sm">
+          Nothing to reorder in the current filter.
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={videos.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {videos.map((video) => (
+            <SortableRow key={video.id} video={video} team={teams.find((t) => t.id === video.teamId)} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+function SortableRow({ video, team }: { video: TrainingVideo; team?: Team }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: video.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-3 p-3 rounded-lg border border-border/50 bg-card",
+        isDragging && "opacity-50 shadow-lg"
+      )}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="shrink-0 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        <span className="font-medium text-sm truncate">{video.title}</span>
+        {video.status === "draft" && (
+          <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600 shrink-0">
+            Draft
+          </Badge>
+        )}
+        {video.status === "archived" && (
+          <Badge variant="outline" className="text-xs border-muted-foreground/30 text-muted-foreground shrink-0">
+            Archived
+          </Badge>
+        )}
+      </div>
+      <Badge variant="secondary" className="text-xs shrink-0">
+        {team?.name || "General"}
+      </Badge>
     </div>
   )
 }

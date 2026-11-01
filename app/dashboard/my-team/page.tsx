@@ -71,7 +71,9 @@ export default function MyTeamPage() {
 
   const myTeam = teams.find((t) => t.id === user.team_id)
   const teamMembers = users.filter((u) => u.teamId === user.team_id && u.role === "volunteer")
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
+  // Draft/archived modules aren't visible to the member themselves, so
+  // they shouldn't count toward their progress total here either.
+  const relevantVideos = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === user.team_id))
 
   const handleTogglePermission = async (memberId: string, permission: DelegatedPermission, enabled: boolean) => {
     if (!user?.team_id) return

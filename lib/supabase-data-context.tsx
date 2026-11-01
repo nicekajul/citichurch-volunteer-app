@@ -216,7 +216,7 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
   const refreshTraining = async () => {
     try {
       const [modulesRes, docsRes, quizzesRes] = await Promise.all([
-        supabase.from("training_modules").select("*").order("created_at"),
+        supabase.from("training_modules").select("*").order("order_index").order("created_at"),
         supabase.from("training_documents").select("*"),
         supabase.from("quiz_questions").select("*").order("training_module_id, order_index"),
       ])
@@ -243,7 +243,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
           videoUrl: module.video_url || undefined,
           duration: module.duration || 0,
           teamId: module.team_id || undefined,
-          order: 0, // Not in schema, use created_at for ordering
+          order: module.order_index ?? 0,
+          status: (module.status as TrainingVideo["status"]) || "published",
           quizEnabled: module.quiz_enabled || false,
           quizRequired: module.required || false,
           passingScore: 70, // Default, not in schema
@@ -810,6 +811,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         video_url: video.videoUrl || null,
         duration: video.duration || 0,
         team_id: video.teamId || null,
+        order_index: video.order ?? 0,
+        status: video.status || "draft",
         quiz_enabled: video.quizEnabled ?? false,
         required: video.quizRequired ?? false,
         created_by: currentUserId,
@@ -846,6 +849,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         video_url: updates.videoUrl,
         duration: updates.duration,
         team_id: updates.teamId,
+        order_index: updates.order,
+        status: updates.status,
         quiz_enabled: updates.quizEnabled,
         required: updates.quizRequired,
         certificate_id: updates.certificateId !== undefined ? updates.certificateId || null : undefined,

@@ -55,7 +55,9 @@ export default function VolunteerDashboard() {
   const myTeam = teams.find((t) => t.id === user.team_id)
 
   // Get relevant training videos (general + team-specific)
-  const relevantVideos = trainingVideos.filter((v) => !v.teamId || v.teamId === user.team_id)
+  // Draft/archived modules are staged or retired by the admin/leader and
+  // shouldn't appear to volunteers at all.
+  const relevantVideos = trainingVideos.filter((v) => v.status === "published" && (!v.teamId || v.teamId === user.team_id))
 
   // Get user's progress
   const myProgress = trainingProgress.filter((p) => p.userId === user.id)
