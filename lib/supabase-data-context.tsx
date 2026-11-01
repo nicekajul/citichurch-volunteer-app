@@ -4,6 +4,30 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { createClient } from "./supabase/client"
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js"
 
+// Pure helper so "which certificates has this user earned" can be computed
+// against an arbitrary progress snapshot (e.g. before/after a single
+// approval), not just the live React state -- used to detect a
+// newly-earned certificate right at approval time without waiting on a
+// state refresh to propagate.
+function computeEarnedCertificateIds(
+  progress: TrainingProgress[],
+  videos: TrainingVideo[],
+  certs: Certificate[],
+  userId: string
+): Set<string> {
+  const approvedIds = new Set(
+    progress.filter((p) => p.userId === userId && p.completed && p.approvedBy).map((p) => p.videoId)
+  )
+  const earned = new Set<string>()
+  for (const cert of certs) {
+    const certModules = videos.filter((v) => v.certificateId === cert.id)
+    if (certModules.length > 0 && certModules.every((v) => approvedIds.has(v.id))) {
+      earned.add(cert.id)
+    }
+  }
+  return earned
+}
+
 // Re-export types from data.ts for compatibility
 export type { UserRole, User, Team, Certificate, TrainingVideo, TrainingDocument, Quiz, QuizQuestion, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, MinistryApplication, AppNotification, VolunteerAvailability, DelegatedPermission, TeamPermission } from "./data"
 import type { User, Team, TrainingVideo, TrainingProgress, Announcement, ServiceSchedule, ScheduleAssignment, Quiz, MinistryApplication, Certificate, AppNotification, VolunteerAvailability, DelegatedPermission, TeamPermission } from "./data"
@@ -29,7 +53,7 @@ interface DataContextType {
   refreshUsers: () => Promise<void>
   refreshTeams: () => Promise<void>
   refreshTraining: () => Promise<void>
-  refreshProgress: (userId?: string) => Promise<void>
+  refreshProgress: (userId?: string) => Promise<TrainingProgress[]>
   refreshAnnouncements: () => Promise<void>
   refreshSchedules: () => Promise<void>
   refreshApplications: () => Promise<void>
@@ -281,9 +305,11 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
       }))
 
       setTrainingProgress(mappedProgress)
+      return mappedProgress
     } catch (err) {
       console.error("Error fetching progress:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch progress")
+      return trainingProgress
     }
   }
 
@@ -941,6 +967,13 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     const volunteer = progressRecord ? users.find((u) => u.id === progressRecord.userId) : null
     const module = progressRecord ? trainingVideos.find((v) => v.id === progressRecord.videoId) : null
 
+    // Snapshot which certificates this volunteer has already earned *before*
+    // this approval, so we can tell afterward whether it was the one that
+    // completed a tier.
+    const earnedBefore = volunteer
+      ? computeEarnedCertificateIds(trainingProgress, trainingVideos, certificates, volunteer.id)
+      : new Set<string>()
+
     const { error } = await supabase
       .from("training_progress")
       .update({ approved_by: approverId, approved_at: new Date().toISOString() })
@@ -950,7 +983,10 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     // Leaders/admins need the full team's progress visible via RLS, not just
     // their own rows — passing a userId here would wipe everyone else's data
     // out of local state (see loadAllData, which scopes this the same way).
-    await refreshProgress()
+    // refreshProgress returns the freshly-fetched rows directly, since the
+    // setTrainingProgress state update it also does won't be visible in this
+    // closure until the next render.
+    const freshProgress = await refreshProgress()
 
     // Notify the volunteer their training was approved
     if (volunteer && module) {
@@ -961,6 +997,40 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
         type: "training",
         link: "/dashboard/training",
       }])
+    }
+
+    // Celebrate a newly-earned certificate tier, if this approval was the
+    // one that completed it.
+    if (volunteer && freshProgress) {
+      const earnedAfter = computeEarnedCertificateIds(freshProgress, trainingVideos, certificates, volunteer.id)
+      const newlyEarned = certificates.filter((c) => earnedAfter.has(c.id) && !earnedBefore.has(c.id))
+
+      for (const cert of newlyEarned) {
+        const notifications: Parameters<typeof pushNotifications>[0] = [{
+          user_id: volunteer.id,
+          title: "🎉 Certificate earned!",
+          message: `Congratulations — you've earned the "${cert.name}" certificate.`,
+          type: "training",
+          link: "/dashboard/certificates",
+        }]
+
+        // Let the team leader know too, same as the completion notification above.
+        if (volunteer.teamId) {
+          const team = teams.find((t) => t.id === volunteer.teamId)
+          const leader = team?.leaderId ? users.find((u) => u.id === team.leaderId) : null
+          if (leader && leader.id !== approverId) {
+            notifications.push({
+              user_id: leader.id,
+              title: `${volunteer.name} earned a certificate`,
+              message: `${volunteer.name} has earned the "${cert.name}" certificate.`,
+              type: "training",
+              link: "/dashboard/volunteers",
+            })
+          }
+        }
+
+        await pushNotifications(notifications)
+      }
     }
   }
 
@@ -1355,13 +1425,8 @@ export function SupabaseDataProvider({ children }: { children: ReactNode }) {
     // A tier is only "earned" once a leader/admin has approved every module in
     // it — self-marked completion alone isn't enough (see leader dashboard's
     // Pending Approvals, which tracks the same approvedBy gate).
-    const approvedIds = new Set(
-      trainingProgress.filter((p) => p.userId === userId && p.completed && p.approvedBy).map((p) => p.videoId)
-    )
-    return certificates.filter((cert) => {
-      const certModules = trainingVideos.filter((v) => v.certificateId === cert.id)
-      return certModules.length > 0 && certModules.every((v) => approvedIds.has(v.id))
-    })
+    const earnedIds = computeEarnedCertificateIds(trainingProgress, trainingVideos, certificates, userId)
+    return certificates.filter((cert) => earnedIds.has(cert.id))
   }
 
   const isCertificateLocked = (certId: string, userId: string): boolean => {

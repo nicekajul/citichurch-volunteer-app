@@ -123,6 +123,38 @@ export default function VolunteersPage() {
     })
   }
 
+  // Every pending approval across every volunteer currently visible on the
+  // page (already scoped to the leader's own team when applicable) -- lets
+  // an admin/leader clear a backlog in one action instead of opening each
+  // volunteer individually.
+  const [isApprovingAll, setIsApprovingAll] = useState(false)
+  const [bulkApproveResult, setBulkApproveResult] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const allPendingApprovals = filteredVolunteers.flatMap((v) => getPendingApprovals(v.id))
+
+  const handleApproveAllPending = async () => {
+    setIsApprovingAll(true)
+    setBulkApproveResult(null)
+    let succeeded = 0
+    let failed = 0
+    // Sequential, not Promise.all -- each approval triggers its own full
+    // progress refetch, and running those concurrently would race.
+    for (const p of allPendingApprovals) {
+      try {
+        await approveProgress(p.id, user?.id || "")
+        succeeded++
+      } catch {
+        failed++
+      }
+    }
+    setBulkApproveResult(
+      failed === 0
+        ? { type: "success", message: `Approved ${succeeded} training module${succeeded === 1 ? "" : "s"}.` }
+        : { type: "error", message: `Approved ${succeeded}, but ${failed} failed. Try again for the rest.` }
+    )
+    setIsApprovingAll(false)
+    setTimeout(() => setBulkApproveResult(null), 6000)
+  }
+
   const handleActivateVolunteer = (volunteerId: string) => {
     updateUser(volunteerId, { status: "active" })
   }
@@ -184,6 +216,12 @@ export default function VolunteersPage() {
           <Alert variant={resendResult.type === "error" ? "destructive" : "default"} className="py-2">
             {resendResult.type === "error" ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
             <AlertDescription>{resendResult.message}</AlertDescription>
+          </Alert>
+        )}
+        {bulkApproveResult && (
+          <Alert variant={bulkApproveResult.type === "error" ? "destructive" : "default"} className="py-2">
+            {bulkApproveResult.type === "error" ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            <AlertDescription>{bulkApproveResult.message}</AlertDescription>
           </Alert>
         )}
 
@@ -290,6 +328,17 @@ export default function VolunteersPage() {
             </Select>
           </div>
 
+          <div className="flex gap-2 flex-wrap">
+          {(user?.role === "admin" || user?.role === "leader") && allPendingApprovals.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleApproveAllPending}
+              disabled={isApprovingAll}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {isApprovingAll ? "Approving…" : `Approve All Pending (${allPendingApprovals.length})`}
+            </Button>
+          )}
           {user?.role === "admin" && (
             <Dialog open={isAddVolunteerOpen} onOpenChange={setIsAddVolunteerOpen}>
               <DialogTrigger asChild>
@@ -383,6 +432,7 @@ export default function VolunteersPage() {
               </DialogContent>
             </Dialog>
           )}
+          </div>
         </div>
 
         {/* Assign Team Dialog */}

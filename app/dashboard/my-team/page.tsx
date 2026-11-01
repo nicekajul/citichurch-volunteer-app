@@ -19,6 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Search, Phone, Calendar, CheckCircle, CheckCircle2, Video, MessageSquare, Send, User, Award, XCircle, ShieldCheck } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { VolunteerBadges } from "@/components/volunteer-badges"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
@@ -114,6 +115,36 @@ export default function MyTeamPage() {
     approveProgress(progressId, user.id)
   }
 
+  // Every pending approval across every team member -- clears a backlog in
+  // one action instead of opening each member's card individually.
+  const [isApprovingAll, setIsApprovingAll] = useState(false)
+  const [bulkApproveResult, setBulkApproveResult] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const allPendingApprovals = filteredMembers.flatMap((m) => getPendingApprovals(m.id))
+
+  const handleApproveAllPending = async () => {
+    setIsApprovingAll(true)
+    setBulkApproveResult(null)
+    let succeeded = 0
+    let failed = 0
+    // Sequential, not Promise.all -- each approval triggers its own full
+    // progress refetch, and running those concurrently would race.
+    for (const p of allPendingApprovals) {
+      try {
+        await approveProgress(p.id, user.id)
+        succeeded++
+      } catch {
+        failed++
+      }
+    }
+    setBulkApproveResult(
+      failed === 0
+        ? { type: "success", message: `Approved ${succeeded} training module${succeeded === 1 ? "" : "s"}.` }
+        : { type: "error", message: `Approved ${succeeded}, but ${failed} failed. Try again for the rest.` }
+    )
+    setIsApprovingAll(false)
+    setTimeout(() => setBulkApproveResult(null), 6000)
+  }
+
   const handleDecline = async () => {
     if (!decliningProgressId) return
     await declineProgress(decliningProgressId, user.id, declineReason.trim())
@@ -153,13 +184,32 @@ export default function MyTeamPage() {
             />
           </div>
 
-          {canMessage && (
-            <Button onClick={() => setIsMessageOpen(true)}>
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Send Team Message
-            </Button>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            {canApprove && allPendingApprovals.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={handleApproveAllPending}
+                disabled={isApprovingAll}
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                {isApprovingAll ? "Approving…" : `Approve All Pending (${allPendingApprovals.length})`}
+              </Button>
+            )}
+            {canMessage && (
+              <Button onClick={() => setIsMessageOpen(true)}>
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Send Team Message
+              </Button>
+            )}
+          </div>
         </div>
+
+        {bulkApproveResult && (
+          <Alert variant={bulkApproveResult.type === "error" ? "destructive" : "default"} className="py-2">
+            {bulkApproveResult.type === "error" ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            <AlertDescription>{bulkApproveResult.message}</AlertDescription>
+          </Alert>
+        )}
 
         {/* Team Members Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
